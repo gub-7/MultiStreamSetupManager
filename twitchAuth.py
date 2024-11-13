@@ -33,10 +33,12 @@ def exchange_code_for_tokens(auth_code):
     return response.json()
 
 # Function to save credentials to a file
-def save_credentials(tokens):
-    tokens['client_id'] = CLIENT_ID
-    tokens['client_secret'] = CLIENT_SECRET
-    with open(f'{TOKEN_PATH}twitchCreds.json', 'w') as creds_file:
+def save_credentials(tokens, altPath = ""):
+    if CLIENT_ID != "" and CLIENT_SECRET != "":
+        tokens['client_id'] = CLIENT_ID
+        tokens['client_secret'] = CLIENT_SECRET
+    path  = TOKEN_PATH if altPath == "" else altPath
+    with open(f'{path}twitchCreds.json', 'w') as creds_file:
         json.dump(tokens, creds_file, indent=2)
 
 # OAuth login page route

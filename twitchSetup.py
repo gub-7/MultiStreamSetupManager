@@ -1,17 +1,19 @@
 import os
 import json
 import requests
+import webbrowser
+
+from twitchAuth import save_credentials
+import twitchAuth
 
 # Load environment variables
-TWITCH_CLIENT_ID = ""
-TWITCH_CLIENT_SECRET = ""
 TWITCH_API_BASE_URL = "https://api.twitch.tv/helix"
 
 # Function to get broadcaster ID
 def get_broadcaster_id(creds):
     headers = {
-        "Authorization": f"Bearer {creds['token']}",
-        "Client-Id": TWITCH_CLIENT_ID
+        "Authorization": f"Bearer {creds['access_token']}",
+        "Client-Id": creds['client_id']
     }
     url = f"{TWITCH_API_BASE_URL}/users"
     response = requests.get(url, headers=headers)
@@ -26,8 +28,8 @@ def get_broadcaster_id(creds):
 # Function to search for the game/category by name
 def search_game(category, creds):
     headers = {
-        "Authorization": f"Bearer {creds['token']}",
-        "Client-Id": TWITCH_CLIENT_ID
+        "Authorization": f"Bearer {creds['access_token']}",
+        "Client-Id": creds['client_id']
     }
     url = f"{TWITCH_API_BASE_URL}/search/categories?query={category}"
     response = requests.get(url, headers=headers)
@@ -45,8 +47,8 @@ def search_game(category, creds):
 # Function to update the Twitch stream with title, game, and description
 def update_twitch_stream(broadcaster_id, title, category_id, creds):
     headers = {
-        "Authorization": f"Bearer {creds['token']}",
-        "Client-Id": TWITCH_CLIENT_ID,
+        "Authorization": f"Bearer {creds['access_token']}",
+        "Client-Id": creds['client_id'],
         "Content-Type": "application/json"
     }
     data = {
@@ -76,10 +78,31 @@ def setup_twitch_stream(creds, title, category):
     except Exception as e:
         print(f"Error: {e}")
 
+def open_chat(creds, path):
+    if 'username' not in creds:
+        headers = {
+            "Authorization": f"Bearer {creds['access_token']}",
+            "Client-Id": creds['client_id']
+        }
+        url = f"{TWITCH_API_BASE_URL}/users"
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            username = data['data'][0]['login']
+            creds['username'] = username
+            twitchAuth.save_credentials(creds, path)
+        else:
+            raise Exception(f"Error fetching username: {response.status_code} {response.text}")
+    else:
+        username = creds['username']
+    
+    chat_url = f"https://www.twitch.tv/popout/{username}/chat?popout="
+    webbrowser.open(chat_url)
+
 # Example usage (integrated with main.py or other files)
 if __name__ == "__main__":
     stream_title = "Exciting Gameplay"
     stream_category = "Fortnite"
     
     setup_twitch_stream(stream_title, stream_category, {})
-

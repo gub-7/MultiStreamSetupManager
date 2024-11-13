@@ -63,7 +63,6 @@ def save_credentials(tokens, account_type):
     filename = 'youtubeCreds.json' if account_type == 'youtube' else 'youtubepCreds.json'
     with open(f'{TOKEN_PATH}{filename}', 'w') as creds_file:
         json.dump(tokens, creds_file, indent=2)
-        print(tokens)
 
 # OAuth login page route
 @app.route('/')
@@ -111,9 +110,9 @@ def refresh_token(refresh_token):
 def perform_auth(creds):
     global CLIENT_ID, CLIENT_SECRET, TOKEN_PATH
     TOKEN_PATH = creds['path']
-
+    copied = False
     for account_type in ['youtube', 'youtubep']:
-        if account_type in creds:
+        if account_type in creds and not copied:
             CLIENT_ID = creds[account_type]['client_id']
             CLIENT_SECRET = creds[account_type]['client_secret']
 
@@ -127,6 +126,11 @@ def perform_auth(creds):
                 if 'access_token' in new_tokens:
                     save_credentials(new_tokens, account_type)
                     print(f"Token for {account_type} refreshed successfully.")
+                    if account_type == 'youtube' and 'youtubep' in creds:
+                        copyOption = input("Would you like to use the same credentials for your other youtubeStream? (y/n): ").lower()
+                        if copyOption == 'y':
+                            save_credentials(new_tokens, 'youtubep')
+                            copied = True
                     continue
 
             print(f"Starting authentication process for {account_type}...")
@@ -153,6 +157,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     creds = json.loads(sys.argv[1])
-    print(creds)
-    print(sys.argv)
     perform_auth(creds)

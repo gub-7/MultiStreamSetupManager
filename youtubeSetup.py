@@ -2,6 +2,7 @@ import os
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from datetime import datetime, timezone, timedelta
+import webbrowser
 
 # Scopes for YouTube API access
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
@@ -16,7 +17,6 @@ def get_existing_stream_keys(youtube):
         
         stream_info = {}
         for item in response.get('items', []):
-            print(item)
             stream_title = item['snippet']['title']
             stream_key = item['cdn']['ingestionInfo']['streamName']
             stream_id = item['id']
@@ -52,12 +52,13 @@ def upload_thumbnail(youtube, video_id, thumbnail_fileURL):
 def setup_youtube_streams(creds, title, description, category, game, thumbnail_fileURL=None):
     streams_to_setup = []
     if creds['youtube']:
-        print(creds['youtube'])
         youtube = googleapiclient.discovery.build("youtube", "v3", credentials=Credentials.from_authorized_user_info(creds['youtube']))
         streams_to_setup.append(('default', youtube))
     if creds['youtubep']:
         youtubep = googleapiclient.discovery.build("youtube", "v3", credentials=Credentials.from_authorized_user_info(creds['youtubep']))
         streams_to_setup.append(('portrait', youtubep))
+    should_open_chat_in = input("Open chat(s) after stream setup? y/n (Enter for y): ").lower()
+    should_open_chat = True if (should_open_chat_in == "" or should_open_chat_in == "y") else False
     for stream_type, yt_client in streams_to_setup:
         try:
             # Get existing stream information
@@ -118,13 +119,19 @@ def setup_youtube_streams(creds, title, description, category, game, thumbnail_f
                 )
                 bind_response = bind_request.execute()
                 print(f"Bind response for {stream_type}:")
-                print(bind_response)
 
                 print(f"Created YouTube broadcast for {stream_type} with broadcast ID: {broadcast_id}")
 
                 # Automatically upload thumbnail if fileURL is provided
                 if thumbnail_fileURL:
                     upload_thumbnail(yt_client, broadcast_id, thumbnail_fileURL)
+                if should_open_chat:
+                    # Get the chat URL and open it in a web browser
+                    chat_url = f"https://www.youtube.com/live_chat?is_popout=1&v={broadcast_id}"
+                    webbrowser.open(chat_url)
+                    print(f"Opened chat URL for {stream_type}: {chat_url}")
+
+
             except Exception as bind_error:
                 print(f"Failed to bind broadcast {broadcast_id} to stream {info['id']} for {stream_type}: {bind_error}")
 
