@@ -1,6 +1,7 @@
 import os
 import json
 import getpass
+from encrypt import unjumble_and_load_json
 import twitchAuth
 import youtubeAuth
 import kickSetup
@@ -48,7 +49,8 @@ def create_kick_creds():
 def create_other_creds(platform):
     filename = TWITCH_APP_DATA_FILE if platform == PLATFORM_TWITCH else YOUTUBE_APP_DATA_FILE
     with open(filename, 'r') as f:
-        creds = json.load(f)
+        decrypted_data = unjumble_and_load_json(filename, 5)
+        creds = json.loads(decrypted_data)
     return creds
 
 def create_creds(platform):
