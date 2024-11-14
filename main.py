@@ -48,10 +48,15 @@ def create_kick_creds():
 
 def create_other_creds(platform):
     filename = TWITCH_APP_DATA_FILE if platform == PLATFORM_TWITCH else YOUTUBE_APP_DATA_FILE
-    with open(filename, 'r') as f:
+    try:
         decrypted_data = unjumble_and_load_json(filename, 5)
-        creds = json.loads(decrypted_data)
-    return creds
+        return decrypted_data
+    except FileNotFoundError:
+        print(f"Could not find {filename}")
+        return {}
+    except Exception as e:
+        print(f"Error loading {filename}: {str(e)}")
+        return {}
 
 def create_creds(platform):
     print(f"Credentials file for {platform} not found.")
@@ -105,6 +110,7 @@ def prompt_creds_update(platform):
 
 def load_platform_credentials(platform, path):
     creds_path = os.path.join(path, CREDS_FILE_TEMPLATE.format(platform))
+    print(creds_path)
     try:
         with open(creds_path, 'r') as creds_file:
             existing_creds = json.load(creds_file)

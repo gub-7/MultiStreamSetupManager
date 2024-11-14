@@ -1,3 +1,4 @@
+alt.py
 *.json
 */
 *__pycache__*
