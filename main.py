@@ -157,7 +157,9 @@ def setup_youtube(creds, title, description, category, game, thumbnail):
     )
 
 def save_kick_creds(creds):
-    kick_creds_path = os.path.join(creds["path"], "kickCreds.json")
+    kick_creds_path = os.path.join(creds["path"], 
+                                   CREDS_FILE_TEMPLATE.format("kick"))
+
     with open(kick_creds_path, 'w') as f:
         json.dump(creds["kick"], f, indent=4)
 
