@@ -59,7 +59,6 @@ def create_other_creds(platform):
         return {}
 
 def create_creds(platform):
-    print(f"Credentials file for {platform} not found.")
     if platform == PLATFORM_KICK:
         return create_kick_creds()
     elif platform in [PLATFORM_TWITCH, PLATFORM_YOUTUBE, PLATFORM_YOUTUBE_PORTRAIT]:

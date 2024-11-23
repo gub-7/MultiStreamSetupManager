@@ -9,11 +9,21 @@ from constants import *
 IS_PORTRAIT = False
 def _fetch_categories(youtube):
     """Fetch available YouTube categories."""
-    request = youtube.videoCategories().list(
-        part="snippet",
-        regionCode=REGION_CODE
-    )
-    return request.execute()
+    try:
+        request = youtube.videoCategories().list(
+            part="snippet",
+            regionCode=REGION_CODE
+        )
+        response = request.execute()
+        
+        if not response or 'items' not in response:
+            print("Error: Failed to fetch YouTube categories. No data received.")
+            return None
+            
+        return response
+    except Exception as e:
+        print(f"Error fetching YouTube categories: {str(e)}")
+        raise
 
 def _create_category_mapping(response):
     """Create a mapping of category names to IDs."""
@@ -25,10 +35,17 @@ def _create_category_mapping(response):
 def get_category_id(youtube, category_name):
     """Get category ID from category name with fuzzy matching."""
     try:
+        # Special handling for Gaming category
+        if category_name.lower() == 'gaming':
+            return "20"  # Gaming category ID
+            
         response = _fetch_categories(youtube)
+        if not response:
+            return DEFAULT_CATEGORY_ID
+            
         categories = _create_category_mapping(response)
         category_names = list(categories.keys())
-        
+            
         matches = get_close_matches(
             category_name.lower(),
             category_names,
@@ -39,12 +56,8 @@ def get_category_id(youtube, category_name):
         if matches:
             matched_name = matches[0]
             category_id = categories[matched_name]
-            print(f"Matched category '{category_name}' to '{matched_name}'"
-                  f" (ID: {category_id})")
             return category_id
             
-        print(f"No matching category found for '{category_name}', "
-              f"defaulting to Gaming")
         return DEFAULT_CATEGORY_ID
             
     except Exception as e:
@@ -74,7 +87,7 @@ def create_stream_key(youtube, title):
             'id': response['id']
         }
     except Exception as e:
-        print(f"Failed to create stream key: {e}")
+        print(f"Error creating stream key: {str(e)}")
         return None
 
 def _process_stream_item(item):
@@ -83,15 +96,6 @@ def _process_stream_item(item):
         'key': item['cdn']['ingestionInfo']['streamName'],
         'id': item['id']
     }
-
-def _handle_portrait_stream(youtube, stream_info):
-    """Create portrait stream if it doesn't exist."""
-    if 'portrait' not in stream_info:
-        print("Portrait stream key not found. Creating new one...")
-        portrait_stream = create_stream_key(youtube, "Portrait Stream")
-        if portrait_stream:
-            stream_info['portrait'] = portrait_stream
-            print("Created new portrait stream key successfully")
 
 def get_existing_stream_keys(youtube):
     """Retrieve existing stream keys from YouTube."""
@@ -102,25 +106,22 @@ def get_existing_stream_keys(youtube):
         )
         response = request.execute()
         
-        stream_info = {}
+        stream_keys = []
         for item in response.get('items', []):
             stream_data = _process_stream_item(item)
-            key_type = 'portrait' if IS_PORTRAIT else 'default'
-            stream_info[key_type] = stream_data
+            stream_data['title'] = item['snippet']['title']
+            stream_keys.append(stream_data)
         
-        _handle_portrait_stream(youtube, stream_info)
-        
-        print(f"Retrieved stream information: {stream_info}")
-        return stream_info
-    except Exception as e:
-        print(f"Failed to retrieve existing stream keys: {e}")
-        return {}
+        return stream_keys
+    except Exception:
+        return []
 
 # Upload a thumbnail to a YouTube live stream
 def upload_thumbnail(youtube, video_id, thumbnail_fileURL):
     """Upload a thumbnail to a YouTube live stream."""
     try:
         if not os.path.exists(thumbnail_fileURL):
+            print(f"Error: Thumbnail file not found at {thumbnail_fileURL}")
             raise FileNotFoundError(
                 f"Thumbnail file not found at {thumbnail_fileURL}"
             )
@@ -130,9 +131,8 @@ def upload_thumbnail(youtube, video_id, thumbnail_fileURL):
             media_body=thumbnail_fileURL
         )
         request.execute()
-        print(f"Thumbnail uploaded successfully for video ID: {video_id}")
     except Exception as e:
-        print(f"Failed to upload thumbnail: {e}")
+        print(f"Error uploading thumbnail: {str(e)}")
 
 # Function to set up YouTube live streams
 def _build_youtube_client(creds, key):
@@ -146,23 +146,23 @@ def _build_youtube_client(creds, key):
 def _get_stream_clients(creds):
     """Get list of YouTube clients to set up."""
     streams = []
-    if 'youtube' in creds:
-        streams.append(('default', _build_youtube_client(creds, 'youtube')))
-    if 'youtubep' in creds:
-        streams.append(('portrait', _build_youtube_client(creds, 'youtubep')))
+    for key in creds:
+        if 'youtube' in key.lower():
+            streams.append((key, _build_youtube_client(creds, key)))
     return streams
 
-def _create_stream_details(title, description, category_id, start_time, game=None):
+def _create_stream_details(title, description, category_id, start_time, made_for_kids, game=None):
     """Create stream details dictionary."""
     details = {
         "snippet": {
             "title": title,
             "description": description,
-            "categoryId": category_id,
+            "categoryId": str(category_id),
             "scheduledStartTime": start_time
         },
         "status": {
-            "privacyStatus": PRIVACY_STATUS
+            "privacyStatus": PRIVACY_STATUS,
+            "selfDeclaredMadeForKids": made_for_kids
         },
         "contentDetails": {
             "enableAutoStart": ENABLE_AUTO_START,
@@ -195,7 +195,7 @@ def _handle_single_stream(yt_client, stream_type, stream_info, details,
     broadcast_response = broadcast_request.execute()
     broadcast_id = broadcast_response["id"]
     
-    print(f"Created broadcast with ID: {broadcast_id}")
+    
     
     bind_request = yt_client.liveBroadcasts().bind(
         part="id,contentDetails",
@@ -208,34 +208,83 @@ def _handle_single_stream(yt_client, stream_type, stream_info, details,
         upload_thumbnail(yt_client, broadcast_id, thumbnail_fileURL)
     
     return YOUTUBE_CHAT_URL.format(broadcast_id)
-
 def setup_youtube_streams(creds, title, description, category, game, 
                          thumbnail_fileURL=None):
     """Set up YouTube live streams."""
     global IS_PORTRAIT
     streams_to_setup = _get_stream_clients(creds)
     urls = []
+    used_stream_keys = set()  # Track which keys have been used
+    
+    # Get made for kids setting
+    made_for_kids = input("Is this content made for kids? (y/n): ").lower() == 'y'
     
     start_time = (datetime.now(timezone.utc) + 
                   timedelta(minutes=STREAM_START_DELAY_MINUTES))
     scheduled_start_time = start_time.isoformat().replace('+00:00', 'Z')
     
+    # Get all existing stream keys once using the first client
+    if not streams_to_setup:
+        return []
+        
+    _, first_client = streams_to_setup[0]
+    existing_keys = get_existing_stream_keys(first_client)
+    
+    # Count how many YouTube streams we need (keys in creds containing 'youtube')
+    needed_streams = len([k for k in creds.keys() if 'youtube' in k.lower()])
+    existing_key_count = len(existing_keys)
+    
+    # Create additional keys if needed
+    keys_to_create = max(0, needed_streams - existing_key_count)
+    if keys_to_create > 0:
+        for i in range(keys_to_create):
+            new_key = create_stream_key(first_client, f"Stream Key {existing_key_count + i + 1}")
+            if new_key:
+                new_key['title'] = f"Stream Key {existing_key_count + i + 1}"
+                existing_keys.append(new_key)
+    
     for stream_type, yt_client in streams_to_setup:
         try:
             IS_PORTRAIT = stream_type == 'portrait'
-            stream_info = get_existing_stream_keys(yt_client)
+            # Filter out keys that have already been used
+            unused_keys = [key for key in existing_keys 
+                         if key['key'] not in used_stream_keys]
             
-            if not stream_info:
-                raise Exception(
-                    f"No stream information found for {stream_type}. "
-                    "Please create stream keys manually in YouTube Studio."
-                )
+            if not unused_keys:
+                raise Exception("All stream keys have been assigned to other streams")
             
-            category_id = (DEFAULT_CATEGORY_ID if game 
-                          else get_category_id(yt_client, category))
+            # Let user select stream key
+            for i, key in enumerate(unused_keys):
+                print(f"{i + 1}. {key['title']}")
+            while True:
+                try:
+                    selection = int(input("Select stream key number: ")) - 1
+                    if 0 <= selection < len(unused_keys):
+                        selected_key = unused_keys[selection]
+                        # Verify key hasn't been used
+                        if selected_key['key'] in used_stream_keys:
+                            print("This stream key has already been used. Please select another.")
+                            continue
+                        used_stream_keys.add(selected_key['key'])  # Mark key as used
+                        break
+                    print("Invalid selection. Please try again.")
+                except ValueError:
+                    print("Please enter a number.")
+            
+            stream_info = {stream_type: selected_key}
+            
+            # Always get category ID, but use gaming if a game is specified
+            if game:
+                category_id = "20"  # Gaming category
+            else:
+                category_id = get_category_id(yt_client, category)
+                
+            details = _create_stream_details(
+                title, description, category_id, scheduled_start_time, made_for_kids, game
+            )
             
             details = _create_stream_details(
-                title, description, category_id, scheduled_start_time, game
+                title, description, category_id, scheduled_start_time, made_for_kids, game
             )
             
             url = _handle_single_stream(
@@ -245,21 +294,6 @@ def setup_youtube_streams(creds, title, description, category, game,
                 urls.append(url)
                 
         except Exception as e:
-            print(f"Failed to set up YouTube stream for {stream_type}: {e}")
+            print(f"Error setting up YouTube stream: {str(e)}")
     
     return urls
-
-# Example usage (integrate with main.py):
-if __name__ == "__main__":
-    # You need to set up the YouTube API client (youtube) before calling this function
-    
-    title = "My Stream Title"
-    description = "My Stream Description"
-    category = "20"  # Example category ID for gaming
-    game = "My Game"
-    thumbnail_fileURL = "path/to/thumbnail.jpg"
-    
-    # Example of how to call the function with separate youtube and youtubep clients
-    # youtube_client = googleapiclient.discovery.build("youtube", "v3", credentials=your_credentials)
-    # youtubep_client = googleapiclient.discovery.build("youtube", "v3", credentials=your_credentials)
-    # setup_youtube_streams(youtube=youtube_client, youtubep=youtubep_client, title=title, description=description, category=category, game=game, thumbnail_fileURL=thumbnail_fileURL)
