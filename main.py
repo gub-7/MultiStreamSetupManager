@@ -8,6 +8,7 @@ import kickSetup
 import twitchSetup
 import youtubeSetup
 import instaSetup
+from chatManager import ChatManager
 from constants import *
 
 def print_platform_selection_menu():
@@ -167,7 +168,9 @@ def setup_instagram(creds, title):
 def setup_platform_streams(creds, title, description, category, game, thumbnail):
     if "twitch" in creds:
         category_or_game = game if game else category
-        setup_twitch(creds, title, category_or_game)
+        twitch_chat_url = setup_twitch(creds, title, category_or_game)
+        cm = ChatManager()
+        cm.add_listener(twitch_chat_url)
 
     if any("youtube" in key for key in creds):
         setup_youtube(creds, title, description, category, game, thumbnail)
