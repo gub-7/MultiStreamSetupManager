@@ -33,20 +33,15 @@ def get_platforms():
     platforms = parse_platform_selection(platform_str)
     return map_platforms_to_names(platforms)
 
-def create_kick_creds():
-    username = input('Enter your kick username: ')
-    password = getpass.getpass('Enter your kick password: ')
-    use_2fa = input('Do you use 2FA? (y/n): ').lower() == 'y'
-    one_time_password = None
-    if use_2fa:
-        one_time_password = getpass.getpass('Enter your 2FA code: ')
+def create_account_creds(platform):
+    username = input(f'Enter your {platform} username: ')
+    password = getpass.getpass(f'Enter your {platform} password: ')
     return {
         'username': username,
         'password': password,
-        'one_time_password': one_time_password
     }
 
-def create_other_creds(platform):
+def create_auth_creds(platform):
     filename = TWITCH_APP_DATA_FILE if platform == PLATFORM_TWITCH else YOUTUBE_APP_DATA_FILE
     try:
         decrypted_data = unjumble_and_load_json(filename, 5)
@@ -59,11 +54,10 @@ def create_other_creds(platform):
         return {}
 
 def create_creds(platform):
-    if platform == PLATFORM_KICK:
-        return create_kick_creds()
-    elif platform in [PLATFORM_TWITCH, PLATFORM_YOUTUBE, PLATFORM_YOUTUBE_PORTRAIT]:
-        return create_other_creds(platform)
-    return {}
+    if platform in [PLATFORM_KICK, PLATFORM_INSTAGRAM]:
+        return create_account_creds(platform)
+    else:
+        return create_auth_creds(platform)
 
 def prompt_copy_creds(platform, other_platform):
     prompt = (f"{platform}Creds.json not found.\n"
@@ -73,10 +67,10 @@ def prompt_copy_creds(platform, other_platform):
 def copy_youtube_creds(platform, path):
     other_platform = PLATFORM_YOUTUBE_PORTRAIT if platform == PLATFORM_YOUTUBE else PLATFORM_YOUTUBE
     other_creds_path = os.path.join(path, CREDS_FILE_TEMPLATE.format(other_platform))
-    
+
     if not os.path.exists(other_creds_path):
         return None
-        
+
     if prompt_copy_creds(platform, other_platform):
         try:
             with open(other_creds_path, 'r') as other_creds_file:
@@ -84,7 +78,7 @@ def copy_youtube_creds(platform, path):
                 other_creds.pop('stream_key', None)
                 return other_creds
         except (FileNotFoundError, json.JSONDecodeError):
-            return None 
+            return None
 
     return None
 
@@ -126,7 +120,7 @@ def load_platform_credentials(platform, path):
 def load_credentials():
     platforms = get_platforms()
     path = get_creds_path()
-    creds = {platform: load_platform_credentials(platform, path) 
+    creds = {platform: load_platform_credentials(platform, path)
              for platform in platforms}
     creds["path"] = path
     return creds
@@ -147,39 +141,43 @@ def setup_twitch(creds, title, category):
 def setup_youtube(creds, title, description, category, game, thumbnail):
     youtube_creds = youtubeAuth.perform_auth(creds)
     return youtubeSetup.setup_youtube_streams(
-        youtube_creds, 
-        title, 
+        youtube_creds,
+        title,
         description,
-        category, 
-        game, 
+        category,
+        game,
         thumbnail
     )
 
-def save_kick_creds(creds):
-    kick_creds_path = os.path.join(creds["path"], 
-                                   CREDS_FILE_TEMPLATE.format("kick"))
+def save_creds(creds, platform):
+    kick_creds_path = os.path.join(creds["path"],
+                                   CREDS_FILE_TEMPLATE.format(platform))
 
     with open(kick_creds_path, 'w') as f:
-        json.dump(creds["kick"], f, indent=4)
+        json.dump(creds[platform], f, indent=4)
 
 def setup_kick(creds, title, category):
-    save_kick_creds(creds)
+    save_creds(creds, "kick")
     return kickSetup.setup_kick_stream(creds["kick"], title, category)
+
+def setup_instagram(creds, title):
+    save_creds(creds, "instagram")
+    return instaSetup.setup_instagram_stream(creds["instagram"], title)
 
 def setup_platform_streams(creds, title, description, category, game, thumbnail):
     if "twitch" in creds:
         category_or_game = game if game else category
         setup_twitch(creds, title, category_or_game)
-        
+
     if any("youtube" in key for key in creds):
         setup_youtube(creds, title, description, category, game, thumbnail)
-        
+
     if "kick" in creds:
         category_or_game = game if game else category
         setup_kick(creds, title, category_or_game)
-        
+
     if "instagram" in creds:
-        instaSetup.open_instagram()
+        setup_instagram(creds, title)
 
 def main():
     creds = load_credentials()
