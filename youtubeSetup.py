@@ -196,8 +196,6 @@ def _handle_single_stream(yt_client, stream_type, stream_info, details,
     broadcast_response = broadcast_request.execute()
     broadcast_id = broadcast_response["id"]
 
-
-
     bind_request = yt_client.liveBroadcasts().bind(
         part="id,contentDetails",
         id=broadcast_id,
@@ -208,14 +206,22 @@ def _handle_single_stream(yt_client, stream_type, stream_info, details,
     if thumbnail_fileURL:
         upload_thumbnail(yt_client, broadcast_id, thumbnail_fileURL)
 
-    return YOUTUBE_CHAT_URL.format(broadcast_id)
+    # Generate chat URL using broadcast ID
+    chat_url = f"https://youtube.com/live_chat?v={broadcast_id}"
+    print(f"Chat URL for {stream_type}: {chat_url}")
+
+    return {
+        'broadcast_id': broadcast_id,
+        'chat_url': chat_url
+    }
 
 def setup_youtube_streams(creds, title, description, category, game,
                          thumbnail_fileURL=None):
     """Set up YouTube live streams."""
     global IS_PORTRAIT
     streams_to_setup = _get_stream_clients(creds)
-    urls = []
+    chat_urls = []
+    broadcast_ids = []
     used_stream_keys = set()  # Track which keys have been used
 
     # Get made for kids setting
@@ -265,14 +271,13 @@ def setup_youtube_streams(creds, title, description, category, game,
                         first = False
                         default_key = next((key for key in existing_keys if 'default' in key.get('title', '').lower()), None)
                         if default_key:
-                            print("Using Default key for first stream")
+                            print("NOTICE: Using Default key for first stream.\n")
                             selected_key = next((key for key in unused_keys if key['title'] == default_key['title']), default_key)
                             used_stream_keys.add(default_key['key'])
-                            print(used_stream_keys)
                             break
 
                     if len(unused_keys) == 1:
-                        print("Using only key")
+                        print("NOTICE: Only one key available, using that key.\n")
                         selected_key = unused_keys[0]
                         break
 
@@ -302,13 +307,18 @@ def setup_youtube_streams(creds, title, description, category, game,
                 title, description, category_id, scheduled_start_time, made_for_kids, game
             )
 
-            url = _handle_single_stream(
+            result = _handle_single_stream(
                 yt_client, stream_type, stream_info, details, thumbnail_fileURL
             )
-            if url:
-                urls.append(url)
+            if result:
+                chat_urls.append(result['chat_url'])
+                broadcast_ids.append(result['broadcast_id'])
 
         except Exception as e:
             print(f"Error setting up YouTube stream: {str(e)}")
 
-    return urls
+    print(f"Created {len(chat_urls)} YouTube streams with chat URLs:")
+    for i, url in enumerate(chat_urls):
+        print(f"Stream {i + 1} chat URL: {url}")
+
+    return chat_urls

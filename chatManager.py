@@ -1,12 +1,12 @@
 import asyncio
-import aiohttp
 import logging
+import websockets
 from typing import Optional, List, Callable, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass
-from urllib.parse import urlparse
-import json
-import re
+from urllib.parse import urlparse, parse_qs
+import pytchat
+from aiohttp import ClientWebSocketResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,25 +31,31 @@ class ChatMessage:
             self.timestamp = datetime.fromisoformat(self.timestamp.replace('Z', '+00:00'))
 
 class ChatManager:
-    """Manages chat polling and message distribution for streaming platforms"""
+    """Manages WebSocket connections for real-time chat listening"""
 
-    def __init__(self, poll_interval: float = 1.0):
-        """
-        Initialize ChatManager
-
-        Args:
-            poll_interval: Time between polls in seconds
-        """
-        self.poll_interval = poll_interval
+    def __init__(self):
+        """Initialize ChatManager"""
         self.listeners: List[Callable[[ChatMessage], None]] = []
         self.running = False
-        self.sessions: Dict[str, aiohttp.ClientSession] = {}
-        self.last_message_id: Dict[str, str] = {}
+        self.websockets: Dict[str, ClientWebSocketResponse] = {}
         self.active_tasks: Dict[str, asyncio.Task] = {}
         self.platform_handlers = {
-            'youtube.com': self._handle_youtube_chat,
-            'twitch.tv': self._handle_twitch_chat,
-            'kick.com': self._handle_kick_chat
+            'youtube.com': self._handle_youtube_connection,
+            'twitch.tv': self._handle_twitch_connection,
+        }
+
+        # Platform-specific WebSocket URLs
+        self.ws_urls = {
+            'twitch.tv': 'wss://irc-ws.chat.twitch.tv:443',
+
+        }
+
+        # Platform-specific headers
+        self.youtube_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0',
+            'Origin': 'https://www.youtube.com',
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache',
         }
 
     def add_listener(self, callback: Callable[[ChatMessage], None]) -> None:
@@ -80,35 +86,6 @@ class ChatManager:
                 listener(message)
             except Exception as e:
                 logger.error(f"Error in message listener: {str(e)}")
-
-    async def _handle_youtube_chat(self, url: str, response_data: Any) -> List[ChatMessage]:
-        """Parse YouTube chat response"""
-        messages = []
-        try:
-            # Extract chat data from YouTube response
-            chat_data = response_data.get('items', [])
-
-            for item in chat_data:
-                snippet = item.get('snippet', {})
-                if not snippet:
-                    continue
-
-                message = ChatMessage(
-                    platform='youtube',
-                    username=snippet.get('authorDisplayName', 'Unknown'),
-                    message=snippet.get('displayMessage', ''),
-                    timestamp=snippet.get('publishedAt', datetime.now()),
-                    message_id=item.get('id', ''),
-                    user_id=snippet.get('authorChannelId', ''),
-                    is_moderator=snippet.get('isModerator', False),
-                    badges=[]
-                )
-                messages.append(message)
-
-        except Exception as e:
-            logger.error(f"Error parsing YouTube chat: {str(e)}")
-
-        return messages
 
     async def _handle_twitch_chat(self, url: str, response_data: Any) -> List[ChatMessage]:
         """Parse Twitch chat response"""
@@ -160,63 +137,124 @@ class ChatManager:
 
         return messages
 
-    async def poll_chat(self, url: str) -> None:
-        """Poll chat URL for new messages"""
-        platform = self._determine_platform(url)
-        if not platform:
-            logger.error(f"Unsupported platform URL: {url}")
-            return
-
-        handler = self.platform_handlers.get(platform)
-        if not handler:
-            logger.error(f"No handler found for platform: {platform}")
+    async def _handle_twitch_connection(self, url: str) -> None:
+        """Handle Twitch WebSocket connection"""
+        channel = parse_qs(urlparse(url).query).get('channel', [''])[0]
+        if not channel:
+            logger.error("No channel specified in Twitch URL")
             return
 
         try:
-            self.sessions[url] = aiohttp.ClientSession()
-            session = self.sessions[url]
+            async with websockets.connect(self.ws_urls['twitch.tv']) as websocket:
+                self.websockets[url] = websocket
 
-            while self.running:
-                try:
-                    # Add any necessary headers or query parameters
-                    params = {}
-                    if self.last_message_id.get(url):
-                        params['after'] = self.last_message_id[url]
+                # Twitch IRC authentication
+                await websocket.send("CAP REQ :twitch.tv/tags twitch.tv/commands")
+                await websocket.send("PASS SCHMOOPIIE")
+                await websocket.send("NICK justinfan123")
+                await websocket.send(f'JOIN #{channel}')
 
-                    headers = self._get_platform_headers(platform)
-
-                    async with session.get(url, params=params, headers=headers) as response:
-                        if response.status != 200:
-                            logger.error(f"Failed to fetch chat, status: {response.status}")
-                            await asyncio.sleep(self.poll_interval)
+                while self.running:
+                    try:
+                        message = await websocket.recv()
+                        if message.startswith('PING'):
+                            await websocket.send('PONG :tmi.twitch.tv')
                             continue
 
-                        data = await response.json()
-                        messages = await handler(url, data)
+                        # Parse IRC message
+                        if 'PRIVMSG' in message:
+                            chat_message = self._parse_twitch_message(message)
+                            if chat_message:
+                                await self._broadcast_message(chat_message)
 
-                        # Update last message ID if we got messages
-                        if messages:
-                            self.last_message_id[url] = messages[-1].message_id
-
-                        # Broadcast messages to listeners
-                        for message in messages:
-                            await self._broadcast_message(message)
-
-                except aiohttp.ClientError as e:
-                    logger.error(f"Network error polling chat: {str(e)}")
-                    await asyncio.sleep(self.poll_interval * 2)  # Back off on error
-                except Exception as e:
-                    logger.error(f"Error polling chat: {str(e)}")
-                    await asyncio.sleep(self.poll_interval)
-
-                await asyncio.sleep(self.poll_interval)
+                    except websockets.ConnectionClosed:
+                        logger.error("Twitch WebSocket connection closed")
+                        break
+                    except Exception as e:
+                        logger.error(f"Error processing Twitch message: {str(e)}")
 
         except Exception as e:
-            logger.error(f"Session error: {str(e)}")
+            logger.error(f"Error in Twitch connection: {str(e)}")
         finally:
-            if url in self.sessions:
-                await self.sessions[url].close()
-                del self.sessions[url]
+            if url in self.websockets:
+                del self.websockets[url]
+
+    async def _handle_youtube_connection(self, chat_url: str) -> None:
+        """Handle YouTube chat using pytchat"""
+        try:
+            # Extract video ID from URL
+            video_id = parse_qs(urlparse(chat_url).query).get('v', [''])[0]
+            if not video_id:
+                logger.error("No video ID found in YouTube URL")
+                return
+
+            # Create pytchat instance
+            chat = pytchat.create(video_id=video_id)
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+
+            while self.running and chat.is_alive():
+                try:
+                    # Get new messages
+                    for chat_item in chat.get().sync_items():
+                        # Create standardized chat message
+                        chat_message = ChatMessage(
+                            platform='youtube',
+                            username=chat_item.author.name,
+                            message=chat_item.message,
+                            timestamp=datetime.fromtimestamp(chat_item.timestamp/1000),  # Convert from ms to seconds
+                            message_id=chat_item.id,
+                            user_id=chat_item.author.channelId,
+                            is_moderator=chat_item.author.isChatModerator,
+                            is_subscriber=chat_item.author.isChatSponsor,
+                            badges=[]  # Could be populated from badgeUrl if needed
+                        )
+
+                        # Broadcast the message
+                        await self._broadcast_message(chat_message)
+
+                except Exception as e:
+                    logger.error(f"Error processing YouTube chat message: {str(e)}")
+
+                # Small delay between polling
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Error in YouTube chat connection: {str(e)}")
+        finally:
+            if 'chat' in locals():
+                chat.terminate()
+
+    def _parse_twitch_message(self, irc_message: str) -> Optional[ChatMessage]:
+        """Parse Twitch IRC message into ChatMessage"""
+        try:
+            # Basic IRC message parsing
+            tags_prefix = ''
+            if irc_message.startswith('@'):
+                tags_prefix, irc_message = irc_message[1:].split(' ', 1)
+
+            tags = dict(tag.split('=') for tag in tags_prefix.split(';')) if tags_prefix else {}
+
+            parts = irc_message.split(' ', 3)
+            if len(parts) < 4:
+                return None
+
+            username = parts[0].split('!')[0][1:]
+            message_text = parts[3][1:] if len(parts) > 3 else ''
+
+            return ChatMessage(
+                platform='twitch',
+                username=tags.get('display-name', username),
+                message=message_text,
+                timestamp=datetime.now(),
+                message_id=tags.get('id', ''),
+                user_id=tags.get('user-id'),
+                is_moderator='moderator' in tags.get('badges', ''),
+                is_subscriber='subscriber' in tags.get('badges', ''),
+                badges=tags.get('badges', '').split(',') if tags.get('badges') else []
+            )
+        except Exception as e:
+            logger.error(f"Error parsing Twitch message: {str(e)}")
+            return None
 
     def _get_platform_headers(self, platform: str) -> Dict[str, str]:
         """Get platform-specific headers"""
@@ -238,22 +276,39 @@ class ChatManager:
         return headers
 
     async def start(self, url: str) -> None:
-        """Start polling chat URL"""
+        """Start WebSocket connection for chat URL"""
         if url in self.active_tasks:
-            logger.warning(f"Chat polling already active for URL: {url}")
+            logger.warning(f"Chat connection already active for URL: {url}")
+            return
+
+        platform = self._determine_platform(url)
+        if not platform:
+            logger.error(f"Unsupported platform URL: {url}")
+            return
+
+        handler = self.platform_handlers.get(platform)
+        if not handler:
+            logger.error(f"No handler found for platform: {platform}")
             return
 
         self.running = True
-        logger.info(f"Starting chat polling for URL: {url}")
+        logger.info(f"Starting chat connection for URL: {url}")
 
-        # Create and store the polling task
-        self.active_tasks[url] = asyncio.create_task(self.poll_chat(url))
+        # Create and store the connection task
+        self.active_tasks[url] = asyncio.create_task(handler(url))
 
     async def stop(self) -> None:
-        """Stop polling chat"""
+        """Stop all chat connections"""
         self.running = False
 
-        # Cancel all active polling tasks
+        # Close all WebSocket connections
+        for url, websocket in self.websockets.items():
+            try:
+                await websocket.close()
+            except Exception as e:
+                logger.error(f"Error closing WebSocket for {url}: {str(e)}")
+
+        # Cancel all active tasks
         for url, task in self.active_tasks.items():
             if not task.done():
                 task.cancel()
@@ -262,35 +317,28 @@ class ChatManager:
                 except asyncio.CancelledError:
                     pass
 
-        # Close all active sessions
-        for url, session in self.sessions.items():
-            if not session.closed:
-                await session.close()
-
         self.active_tasks.clear()
-        self.sessions.clear()
-        self.last_message_id.clear()
+        self.websockets.clear()
 
-        logger.info("Stopped chat polling")
+        logger.info("Stopped all chat connections")
 
 # Example usage
 async def main():
-    # Create chat manager with 2-second poll interval
-    chat_manager = ChatManager(poll_interval=2.0)
+    chat_manager = ChatManager()
 
-    # Add message listener
-    def print_message(message: ChatMessage):
-        print(f"[{message.platform}] {message.username}: {message.message}")
+    def handle_message(msg: ChatMessage):
+        print(f"[{msg.platform}] {msg.username}: {msg.message}")
 
-    chat_manager.add_listener(print_message)
+    chat_manager.add_listener(handle_message)
 
-    # Start polling chat URL
-    chat_url = "https://www.youtube.com/live_chat?v=STREAM_ID"
+    # Connect to Twitch chat
+    await chat_manager.start("https://twitch.tv/chat?channel=channel_name")
+
     try:
-        await chat_manager.start(chat_url)
+        while True:
+            await asyncio.sleep(1)
     except KeyboardInterrupt:
         await chat_manager.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
-

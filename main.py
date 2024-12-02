@@ -1,5 +1,8 @@
 import os
+import signal
+import asyncio
 import json
+import sys
 import getpass
 from encrypt import unjumble_and_load_json
 import twitchAuth
@@ -8,7 +11,8 @@ import kickSetup
 import twitchSetup
 import youtubeSetup
 import instaSetup
-from chatManager import ChatManager
+from chatManager import ChatManager, ChatMessage
+from chatDisplay import ChatDisplay, create_chat_display
 from constants import *
 
 def print_platform_selection_menu():
@@ -165,28 +169,116 @@ def setup_instagram(creds, title):
     save_creds(creds, "instagram")
     return instaSetup.setup_instagram_stream(creds["instagram"], title)
 
-def setup_platform_streams(creds, title, description, category, game, thumbnail):
+async def setup_platform_streams(creds, title, description, category, game, thumbnail):
+    chat_urls = []
+
     if "twitch" in creds:
         category_or_game = game if game else category
         twitch_chat_url = setup_twitch(creds, title, category_or_game)
-        cm = ChatManager()
-        cm.add_listener(twitch_chat_url)
+        chat_urls.append(twitch_chat_url)
 
     if any("youtube" in key for key in creds):
-        setup_youtube(creds, title, description, category, game, thumbnail)
+        youtube_urls = setup_youtube(creds, title, description, category, game, thumbnail)
+        if youtube_urls:
+            for url in youtube_urls:
+                chat_urls.append(url)
 
     if "kick" in creds:
         category_or_game = game if game else category
-        setup_kick(creds, title, category_or_game)
+        kick_url = setup_kick(creds, title, category_or_game)
+        if kick_url:
+            chat_urls.append(kick_url)
 
     if "instagram" in creds:
-        setup_instagram(creds, title)
+        insta_url = setup_instagram(creds, title)
+        if insta_url:
+            chat_urls.append(insta_url)
 
-def main():
-    creds = load_credentials()
-    title, description, category, game, thumbnail = get_stream_details()
-    setup_platform_streams(creds, title, description, category, game, thumbnail)
-    print("Stream setup complete")
+    return chat_urls
+
+def signal_handler(sig, frame):
+    print("\nShutting down chat display...")
+    sys.exit(0)
+
+async def run_chat_manager(creds, chat_urls, chat_display):
+    """Run the chat manager with WebSocket connections"""
+    # Initialize chat manager
+    cm = ChatManager()
+
+    # Create message handler for chat display
+    def handle_chat_message(message: ChatMessage):
+        try:
+            # Convert ChatManager message to ChatDisplay format
+            chat_display.add_message(
+                platform=message.platform,
+                username=message.username,
+                message=message.message
+            )
+        except Exception as e:
+            print(f"Error handling chat message: {str(e)}")
+
+    # Add the message handler to ChatManager
+    cm.add_listener(handle_chat_message)
+
+    # Start WebSocket connections for each platform
+    connection_tasks = []
+    for url in chat_urls:
+        try:
+            connection_task = asyncio.create_task(cm.start(url))
+            connection_tasks.append(connection_task)
+            print(f"Connecting to chat: {url}")
+        except Exception as e:
+            print(f"Failed to connect to chat {url}: {str(e)}")
+
+    return cm, connection_tasks
+
+async def main():
+    try:
+        # Load credentials and setup streams
+        creds = load_credentials()
+        title, description, category, game, thumbnail = get_stream_details()
+        chat_urls = await setup_platform_streams(creds, title, description, category, game, thumbnail)
+        print("Stream setup complete")
+
+        # Initialize chat display
+        chat_display = create_chat_display()
+        chat_display.start()
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # Start chat manager and connections
+        chat_manager, connection_tasks = await run_chat_manager(creds, chat_urls, chat_display)
+        print("\nChat display initialized. Press Ctrl+C to exit.")
+
+        # Wait for connections and keep running
+        try:
+            while True:
+                await asyncio.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+        finally:
+            # Cleanup
+            await chat_manager.stop()
+            chat_display.stop()
+
+            # Cancel any pending tasks
+            for task in connection_tasks:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+            print("Chat display stopped.")
+
+    except Exception as e:
+        print(f"Error in main: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user")
+    except Exception as e:
+        print(f"Program terminated with error: {str(e)}")
