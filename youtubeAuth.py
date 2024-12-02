@@ -15,8 +15,8 @@ app = Flask(__name__)
 server = None
 
 # Load environment variables
-CLIENT_ID = "" 
-CLIENT_SECRET = "" 
+CLIENT_ID = ""
+CLIENT_SECRET = ""
 TOKEN_PATH = ""
 IS_PORTRAIT = False
 
@@ -45,7 +45,7 @@ def exchange_code_for_tokens(auth_code):
     flow = Flow.from_client_config(_create_flow_config(), scopes=SCOPES)
     flow.redirect_uri = YOUTUBE_REDIRECT_URI
     flow.fetch_token(code=auth_code)
-    
+
     return {
         'access_token': flow.credentials.token,
         'refresh_token': flow.credentials.refresh_token,
@@ -58,7 +58,7 @@ def save_credentials(tokens, account_type):
     """Save credentials to a file."""
     tokens['client_id'] = CLIENT_ID
     tokens['client_secret'] = CLIENT_SECRET
-    filename = (YOUTUBE_CREDS_FILE if account_type == 'youtube' 
+    filename = (YOUTUBE_CREDS_FILE if account_type == 'youtube'
                else YOUTUBE_PORTRAIT_CREDS_FILE)
     with open(f'{TOKEN_PATH}{filename}', 'w') as creds_file:
         json.dump(tokens, creds_file, indent=2)
@@ -114,19 +114,19 @@ def _handle_token_refresh(creds, account_type, copied):
     """Handle token refresh for an account type."""
     print(f"Refreshing token for {account_type}...")
     new_tokens = refresh_token(creds[account_type]['refresh_token'])
-    
+
     if 'access_token' not in new_tokens:
         return copied, None
-        
+
     save_credentials(new_tokens, account_type)
     print(f"Token for {account_type} refreshed successfully.")
-    
+
     if account_type == 'youtube' and 'youtubep' in creds:
         if _should_copy_credentials():
             save_credentials(new_tokens, 'youtubep')
             creds['youtubep'] = new_tokens.copy()
             return True, new_tokens
-    
+
     return copied, new_tokens
 
 def _should_copy_credentials():
@@ -147,18 +147,18 @@ def perform_auth(creds):
     global CLIENT_ID, CLIENT_SECRET, TOKEN_PATH
     TOKEN_PATH = creds['path']
     copied = False
-    
-    for account_type in ['youtube', 'youtubep']:
+
+    for account_type in [key for key in creds.keys() if 'youtube' in key.lower()]:
         global IS_PORTRAIT
         IS_PORTRAIT = account_type == 'youtubep'
-        
+
         if account_type not in creds or copied:
             continue
-            
+
         CLIENT_ID = creds[account_type]['client_id']
         CLIENT_SECRET = creds[account_type]['client_secret']
 
-        if ('access_token' in creds[account_type] and 
+        if ('access_token' in creds[account_type] and
                 validate_token(creds[account_type]['access_token'])):
             print(f"Access token for {account_type} is valid.")
             continue
@@ -172,15 +172,15 @@ def perform_auth(creds):
         print(f"Starting authentication process for {account_type}...")
         print("Please go to the following URL to authenticate with YouTube: "
               f"http://{YOUTUBE_SERVER_HOST}:{YOUTUBE_SERVER_PORT}/")
-        
+
         _start_auth_server()
-            
+
         # After auth, load the new credentials
         try:
             with open(f'{TOKEN_PATH}{"youtubeCreds.json" if account_type == "youtube" else "youtubepCreds.json"}', 'r') as f:
                 new_creds = json.load(f)
                 creds[account_type] = new_creds
-                
+
                 if account_type == 'youtube' and 'youtubep' in creds and not copied:
                     copyOption = input("Would you like to use the same credentials for your other youtubeStream? (y/n): ").lower()
                     if copyOption == 'y':
@@ -192,23 +192,18 @@ def perform_auth(creds):
 
     return_creds = {}
     try:
-        with open(f'{TOKEN_PATH}youtubeCreds.json', 'r') as f:
-            return_creds['youtube'] = json.load(f)
+        for platform in creds.keys():
+            with open(f'{TOKEN_PATH}{platform}Creds.json', 'r') as f:
+                return_creds[platform] = json.load(f)
     except FileNotFoundError:
         pass
-        
-    try:
-        with open(f'{TOKEN_PATH}youtubepCreds.json', 'r') as f:
-            return_creds['youtubep'] = json.load(f)
-    except FileNotFoundError:
-        pass
-        
+
     return return_creds
 
 def get_live_streams(access_token):
     youtube = build('youtube', 'v3', credentials=None)
     youtube._http.credentials = Credentials(token=access_token)
-    
+
     request = youtube.liveStreams().list(
         part="snippet,cdn",
         mine=True
@@ -220,6 +215,6 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python youtubeAuth.py '<credentials_json>'")
         sys.exit(1)
-    
+
     creds = json.loads(sys.argv[1])
     perform_auth(creds)
