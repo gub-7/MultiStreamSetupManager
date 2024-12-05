@@ -1,3 +1,4 @@
+import logging
 from instagrapi import Client
 import streamForward
 from constants import (
@@ -5,6 +6,8 @@ from constants import (
 )
 
 def setup_instagram_stream(creds, title):
+    # Silence the instagrapi logger
+    logging.getLogger('instagrapi').setLevel(logging.ERROR)
     client = Client()
     client.login(username=creds["username"], password=creds["password"])
 

@@ -2,6 +2,7 @@ import asyncio
 import streamForward
 from kick import Client, Credentials
 from constants import RTMPS_PREFIX, APP_PATH, STREAM_MODE
+import logging
 
 
 async def create_credentials(creds):
@@ -12,8 +13,9 @@ async def create_credentials(creds):
         one_time_password=creds.get('one_time_password')
     )
 
-async def setup_kick_stream(creds, title, category):
+async def setup_kick_stream(creds, title, game=None):
     """Set up async Kick stream with given credentials and metadata."""
+    logging.getLogger('kick').setLevel(logging.ERROR)
     client = Client()
     credentials = await create_credentials(creds)
 
@@ -21,11 +23,45 @@ async def setup_kick_stream(creds, title, category):
     # Note: The API wrapper documentation doesn't show how to set
     # stream title/category. You may need to extend this once that
     # functionality is documented
-    category_data = await client.search_categories(category)
+    # Get category search query
+    search_query = game if game else input("Please enter a Kick category: ")
 
-    doc = category_data.hits[0].document
+    while True:
+        try:
+            category_data = await client.search_categories(search_query)
+            if not category_data.hits:
+                search_query = input("No categories found. Enter another category: ")
+                continue
 
-    await client.set_stream_info(title, "English", int(doc.id), doc.name, doc.is_mature)
+            # Display up to 5 categories
+            max_display = min(len(category_data.hits), 5)
+            for i, hit in enumerate(category_data.hits[:max_display], 1):
+                doc = hit.document
+                print(f"{i}. {doc.name}")
+
+            try:
+                selection = input(f"Select a category (1-{max_display}): ")
+                selection_idx = int(selection) - 1
+
+                if 0 <= selection_idx < max_display:
+                    selected_cat = category_data.hits[selection_idx].document
+                    break
+                else:
+                    print(f"Please enter a number between 1 and {max_display}")
+            except ValueError:
+                print("Please enter a valid number")
+
+        except Exception as e:
+            print(f"Search error: {e}")
+            search_query = input("Enter another category: ")
+
+    await client.set_stream_info(
+        title,
+        "English",
+        int(selected_cat.id),
+        selected_cat.name,
+        selected_cat.is_mature
+    )
     streamInfo = await client.fetch_stream_url_and_key()
     url = streamInfo.stream_url
     key = streamInfo.stream_key

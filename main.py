@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import getpass
+import logging
 from encrypt import unjumble_and_load_json
 import twitchAuth
 import youtubeAuth
@@ -15,7 +16,18 @@ from chatManager import ChatManager, ChatMessage
 from chatDisplay import ChatDisplay, create_chat_display
 from constants import *
 
+# Silence all logging
+logging.getLogger().setLevel(logging.ERROR)
+# Silence urllib3 (used by many HTTP clients)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+# Silence asyncio logging
+logging.getLogger('asyncio').setLevel(logging.ERROR)
+logging.getLogger('websockets').setLevel(logging.ERROR)
+logging.getLogger('instagrapi').setLevel(logging.ERROR)
+logging.getLogger('youtube').setLevel(logging.ERROR)
+
 def print_platform_selection_menu():
+
     print(PLATFORM_SELECTION_MENU)
 
 def parse_platform_selection(platform_str):
@@ -130,28 +142,17 @@ def load_credentials():
     creds["path"] = path
     return creds
 
-def get_stream_details():
-    title = input("Enter stream title: ")
-    description = input("Enter stream description: ")
-    category = input("Enter stream category: ")
-    game = input("Enter game (enter to skip): ")
-    thumbnail = input("Enter thumbnail image file URL (enter to skip): ")
-    return title, description, category, game, thumbnail
-
-def setup_twitch(creds, title, category):
+def setup_twitch(creds, title, game=None):
     twitch_creds = twitchAuth.perform_auth(creds)
-    twitchSetup.setup_twitch_stream(twitch_creds, title, category)
+    twitchSetup.setup_twitch_stream(twitch_creds, title, game)
     return twitchSetup.get_chat_url(twitch_creds, creds['path'])
 
-def setup_youtube(creds, title, description, category, game, thumbnail):
+def setup_youtube(creds, title, game=None):
     youtube_creds = youtubeAuth.perform_auth(creds)
     return youtubeSetup.setup_youtube_streams(
         youtube_creds,
         title,
-        description,
-        category,
-        game,
-        thumbnail
+        game
     )
 
 def save_creds(creds, platform):
@@ -161,31 +162,32 @@ def save_creds(creds, platform):
     with open(kick_creds_path, 'w') as f:
         json.dump(creds[platform], f, indent=4)
 
-async def setup_kick(creds, title, category):
+async def setup_kick(creds, title, game=None):
     save_creds(creds, "kick")
-    return await kickSetup.setup_kick_stream(creds["kick"], title, category)
+    return await kickSetup.setup_kick_stream(creds["kick"], title, game)
 
 def setup_instagram(creds, title):
     save_creds(creds, "instagram")
     return instaSetup.setup_instagram_stream(creds["instagram"], title)
 
-async def setup_platform_streams(creds, title, description, category, game, thumbnail):
+async def setup_platform_streams(creds):
     chat_urls = []
 
+    title = input("Enter stream title: ")
+    game = input("Enter Game title (Enter to skip): ")
+
     if "twitch" in creds:
-        category_or_game = game if game else category
-        twitch_chat_url = setup_twitch(creds, title, category_or_game)
+        twitch_chat_url = setup_twitch(creds, title, game if game != "" else None)
         chat_urls.append(twitch_chat_url)
 
     if any("youtube" in key for key in creds):
-        youtube_urls = setup_youtube(creds, title, description, category, game, thumbnail)
+        youtube_urls = setup_youtube(creds, title, game if game != "" else None)
         if youtube_urls:
             for url in youtube_urls:
                 chat_urls.append(url)
 
     if "kick" in creds:
-        category_or_game = game if game else category
-        kick_url = await setup_kick(creds, title, category_or_game)
+        kick_url = await setup_kick(creds, title, game if game != "" else None)
         if kick_url:
             chat_urls.append(kick_url)
 
@@ -238,11 +240,10 @@ async def main():
     try:
         # Load credentials and setup streams
         creds = load_credentials()
-        title, description, category, game, thumbnail = get_stream_details()
 
         # Ensure stream setup completes before continuing
         try:
-            chat_urls = await setup_platform_streams(creds, title, description, category, game, thumbnail)
+            chat_urls = await setup_platform_streams(creds)
             if not chat_urls:
                 print("No chat URLs were returned from stream setup. Exiting...")
                 return

@@ -388,7 +388,6 @@ class ChatManager:
             source: Either a URL string for YouTube/Twitch, or a client object for Kick/Instagram
         """
         # Handle client-based platforms (Kick and Instagram)
-        print("Source attributes:", dir(source))
         if hasattr(source, 'get_messages'):  # Kick client
             if 'kick_client' in self.active_tasks:
                 logger.warning("Kick chat connection already active")

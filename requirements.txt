@@ -26,7 +26,7 @@ isodate==0.7.2
 itsdangerous==2.2.0
 Jinja2==3.1.4
 kick.py @ git+https://github.com/gub-7/kick.py.git@fddb01bb8bbb02e0f4abab5b7cf01b5ce781f881
-instagrapi @ git+https://github.com/gub-7/instagrapi.git@77ec87d3ed8b09c03b0fe1de108bff3b9a4d2e08
+instagrapi @ git+https://github.com/gub-7/instagrapi.git@7f16ce9903cb3523aca81e9737a330a7747174f8
 MarkupSafe==3.0.2
 multidict==6.1.0
 oauthlib==3.2.2

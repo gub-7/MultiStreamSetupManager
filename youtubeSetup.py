@@ -215,14 +215,83 @@ def _handle_single_stream(yt_client, stream_type, stream_info, details,
         'chat_url': chat_url
     }
 
-def setup_youtube_streams(creds, title, description, category, game,
-                         thumbnail_fileURL=None):
+def _select_category(yt_client, game=None):
+    """Present category selection to user"""
+    if game:
+        print("Game specified, using Gaming category")
+        return "20"  # Gaming category ID
+
+    response = _fetch_categories(yt_client)
+    if not response or 'items' not in response:
+        print("Failed to fetch categories, using default category")
+        return DEFAULT_CATEGORY_ID
+
+    # Display up to 5 categories at a time
+    categories = response['items']
+    total_categories = len(categories)
+    page = 0
+    page_size = 5
+
+    while True:
+        start_idx = page * page_size
+        end_idx = min(start_idx + page_size, total_categories)
+
+        print("\nAvailable categories:")
+        for i, item in enumerate(categories[start_idx:end_idx], 1):
+            print(f"{i}. {item['snippet']['title']}")
+
+        if end_idx < total_categories:
+            print("n. Next page")
+        if page > 0:
+            print("p. Previous page")
+
+        selection = input(f"Select category (1-{end_idx-start_idx}): ").lower()
+
+        if selection == 'n' and end_idx < total_categories:
+            page += 1
+            continue
+        if selection == 'p' and page > 0:
+            page -= 1
+            continue
+
+        try:
+            idx = int(selection) - 1
+            if 0 <= idx < (end_idx - start_idx):
+                selected = categories[start_idx + idx]
+                print(f"Selected: {selected['snippet']['title']}")
+                return selected['id']
+        except ValueError:
+            print("Please enter a valid number")
+
+        print("Invalid selection, please try again")
+
+def setup_youtube_streams(creds, title, game=None):
     """Set up YouTube live streams."""
     global IS_PORTRAIT
     streams_to_setup = _get_stream_clients(creds)
     chat_urls = []
     broadcast_ids = []
     used_stream_keys = set()  # Track which keys have been used
+
+    # Get all initial setup inputs early
+    if not streams_to_setup:
+        return []
+    _, first_client = streams_to_setup[0]
+
+    # Get category
+    selected_category_id = _select_category(first_client, game)
+
+    # Get description
+    description = input("Enter stream description (press Enter for none): ").strip()
+    if not description:
+        description = title  # Use title as default description
+
+    # Get thumbnail
+    thumbnail_prompt = "Enter path to thumbnail image (press Enter to skip): "
+    thumbnail_fileURL = input(thumbnail_prompt).strip()
+    if thumbnail_fileURL and not os.path.exists(thumbnail_fileURL):
+        print(f"Warning: Thumbnail file not found at {thumbnail_fileURL}")
+        thumbnail_fileURL = None
 
     # Get made for kids setting
     made_for_kids = input("Is this content made for kids? (y/n): ").lower() == 'y'
@@ -297,18 +366,19 @@ def setup_youtube_streams(creds, title, description, category, game,
 
             stream_info = {stream_type: selected_key}
 
-            # Always get category ID, but use gaming if a game is specified
-            if game:
-                category_id = "20"  # Gaming category
-            else:
-                category_id = get_category_id(yt_client, category)
+            # Use the previously selected category ID
+            category_id = selected_category_id
 
             details = _create_stream_details(
                 title, description, category_id, scheduled_start_time, made_for_kids, game
             )
 
             result = _handle_single_stream(
-                yt_client, stream_type, stream_info, details, thumbnail_fileURL
+                yt_client,
+                stream_type,
+                stream_info,
+                details,
+                thumbnail_fileURL if thumbnail_fileURL else None
             )
             if result:
                 chat_urls.append(result['chat_url'])
