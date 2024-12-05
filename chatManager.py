@@ -1,15 +1,25 @@
 import asyncio
 import logging
-import websockets
-from typing import Optional, List, Callable, Dict, Any
+from typing import (
+    Optional,
+    List,
+    Callable,
+    Dict,
+    Any
+)
 from datetime import datetime
 from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
 import pytchat
 from aiohttp import ClientWebSocketResponse
+from kick import Client
+import websockets
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -39,9 +49,13 @@ class ChatManager:
         self.running = False
         self.websockets: Dict[str, ClientWebSocketResponse] = {}
         self.active_tasks: Dict[str, asyncio.Task] = {}
+
+        # Platform handlers mapping
         self.platform_handlers = {
             'youtube.com': self._handle_youtube_connection,
             'twitch.tv': self._handle_twitch_connection,
+            'kick.com': self._handle_kick_connection,
+            'instagram.com': self._handle_instagram_connection,
         }
 
         # Platform-specific WebSocket URLs
@@ -61,13 +75,11 @@ class ChatManager:
     def add_listener(self, callback: Callable[[ChatMessage], None]) -> None:
         """Add a message listener callback"""
         self.listeners.append(callback)
-        logger.info("Added new chat message listener")
 
     def remove_listener(self, callback: Callable[[ChatMessage], None]) -> None:
         """Remove a message listener callback"""
         if callback in self.listeners:
             self.listeners.remove(callback)
-            logger.info("Removed chat message listener")
 
     def _determine_platform(self, url: str) -> Optional[str]:
         """Determine chat platform from URL"""
@@ -85,78 +97,169 @@ class ChatManager:
             try:
                 listener(message)
             except Exception as e:
-                logger.error(f"Error in message listener: {str(e)}")
+                logger.debug(e)
 
-    async def _handle_twitch_chat(self, url: str, response_data: Any) -> List[ChatMessage]:
-        """Parse Twitch chat response"""
-        messages = []
+    def _create_twitch_message(self, item: dict) -> ChatMessage:
+        """Create ChatMessage from Twitch chat data"""
+        user_data = item.get('user', {})
+        return ChatMessage(
+            platform='twitch',
+            username=user_data.get('display_name', 'Unknown'),
+            message=item.get('message', ''),
+            timestamp=datetime.fromtimestamp(item.get('timestamp', 0)),
+            message_id=item.get('id', ''),
+            user_id=user_data.get('id', ''),
+            is_moderator=user_data.get('is_moderator', False),
+            is_subscriber=user_data.get('is_subscriber', False),
+            badges=user_data.get('badges', [])
+        )
+
+    def _create_instagram_message(self, item: dict) -> ChatMessage:
+        """Create ChatMessage from Instagram comment data"""
+        return ChatMessage(
+            platform='instagram',
+            username=item.get('user', {}).get('username', 'Unknown'),
+            message=item.get('text', ''),
+            timestamp=datetime.fromtimestamp(item['created_at']),
+            message_id=str(item['pk']),
+            user_id=str(item.get('user', {}).get('pk', '')),
+            is_moderator=False,
+            is_subscriber=False,
+            badges=[]
+        )
+
+    async def _process_instagram_messages(
+        self,
+        messages: dict,
+        seen_ids: set,
+        last_ts: int
+    ) -> int:
+        """Process Instagram messages and return updated timestamp"""
+        if not messages or 'comments' not in messages:
+            return last_ts
+
+        for item in messages['comments']:
+            if item['pk'] in seen_ids:
+                continue
+
+            seen_ids.add(item['pk'])
+            last_ts = max(last_ts, item['created_at'])
+
+            msg = self._create_instagram_message(item)
+            await self._broadcast_message(msg)
+
+        return last_ts
+
+    async def _handle_instagram_connection(self, client) -> None:
+        """Handle Instagram live chat using authenticated client"""
+        last_ts = 0
+        poll_interval = 15  # Standardized polling interval
+        seen_message_ids = set()
+
         try:
-            # Extract chat data from Twitch response
-            chat_data = response_data.get('messages', [])
+            broadcast_id = client.username
+            if not broadcast_id:
+                return
 
-            for item in chat_data:
-                message = ChatMessage(
-                    platform='twitch',
-                    username=item.get('user', {}).get('display_name', 'Unknown'),
-                    message=item.get('message', ''),
-                    timestamp=datetime.fromtimestamp(item.get('timestamp', 0)),
-                    message_id=item.get('id', ''),
-                    user_id=item.get('user', {}).get('id', ''),
-                    is_moderator=item.get('user', {}).get('is_moderator', False),
-                    is_subscriber=item.get('user', {}).get('is_subscriber', False),
-                    badges=item.get('user', {}).get('badges', [])
-                )
-                messages.append(message)
+            while self.running:
+                try:
+                    messages = await asyncio.to_thread(
+                        client.media_fetch_live_chat,
+                        broadcast_id,
+                        last_comment_ts=last_ts
+                    )
+
+                    last_ts = await self._process_instagram_messages(
+                        messages,
+                        seen_message_ids,
+                        last_ts
+                    )
+
+                    if len(seen_message_ids) > 1000:
+                        seen_message_ids.clear()
+
+                except Exception as e:
+                    logger.error(f"Error polling Instagram chat: {str(e)}")
+
+                await asyncio.sleep(poll_interval)
 
         except Exception as e:
-            logger.error(f"Error parsing Twitch chat: {str(e)}")
+            logger.error(f"Error in Instagram chat connection: {str(e)}")
 
-        return messages
+    def _create_kick_message(self, item) -> ChatMessage:
+        """Create a ChatMessage from a Kick message item"""
+        return ChatMessage(
+            platform='kick',
+            username=item.author,
+            message=item.content,
+            timestamp=item.created_at,
+            message_id=str(item.id),
+            user_id=str(item.author),
+            badges=[]
+        )
 
-    async def _handle_kick_chat(self, url: str, response_data: Any) -> List[ChatMessage]:
-        """Parse Kick chat response"""
-        messages = []
+    async def _process_kick_messages(
+        self,
+        messages: list,
+        seen_ids: set
+    ) -> None:
+        """Process new Kick messages"""
+        for item in reversed(messages):
+            if item.id in seen_ids:
+                continue
+
+            seen_ids.add(item.id)
+            msg = self._create_kick_message(item)
+            await self._broadcast_message(msg)
+
+    async def _handle_kick_connection(self, client) -> None:
+        """Handle Kick chat using authenticated client"""
+        seen_ids = set()
+        poll_interval = 15  # Standardized polling interval
+
         try:
-            # Extract chat data from Kick response
-            chat_data = response_data.get('messages', [])
+            user = await client.fetch_user(client.user.username)
+            if not user or not user.channel_id:
+                logger.error("Could not fetch Kick channel information")
+                return
 
-            for item in chat_data:
-                message = ChatMessage(
-                    platform='kick',
-                    username=item.get('sender', {}).get('username', 'Unknown'),
-                    message=item.get('content', ''),
-                    timestamp=datetime.fromtimestamp(item.get('created_at', 0)),
-                    message_id=str(item.get('id', '')),
-                    user_id=str(item.get('sender', {}).get('id', '')),
-                    badges=[]
-                )
-                messages.append(message)
+            while self.running:
+                try:
+                    msgs = await client.get_messages(user.channel_id)
+                    await self._process_kick_messages(msgs, seen_ids)
+
+                    if len(seen_ids) > 1000:
+                        seen_ids.clear()
+
+                except Exception as e:
+                    logger.error(f"Error polling Kick chat: {str(e)}")
+
+                await asyncio.sleep(poll_interval)
 
         except Exception as e:
-            logger.error(f"Error parsing Kick chat: {str(e)}")
-
-        return messages
+            logger.error(f"Error in Kick chat connection: {str(e)}")
 
     async def _handle_twitch_connection(self, url: str) -> None:
         """Handle Twitch WebSocket connection"""
-        channel = parse_qs(urlparse(url).query).get('channel', [''])[0]
-        if not channel:
-            logger.error("No channel specified in Twitch URL")
-            return
-
+        channel = url.split('popout/')[1].split('/chat')[0]
         try:
             async with websockets.connect(self.ws_urls['twitch.tv']) as websocket:
                 self.websockets[url] = websocket
 
                 # Twitch IRC authentication
+                logger.info("Sending Twitch IRC capabilities request")
                 await websocket.send("CAP REQ :twitch.tv/tags twitch.tv/commands")
+                logger.info("Sending anonymous auth")
                 await websocket.send("PASS SCHMOOPIIE")
                 await websocket.send("NICK justinfan123")
+                logger.info(f"Joining channel #{channel}")
                 await websocket.send(f'JOIN #{channel}')
 
                 while self.running:
                     try:
                         message = await websocket.recv()
+                        logger.debug(f"Raw Twitch message received: {message}")
+
                         if message.startswith('PING'):
                             await websocket.send('PONG :tmi.twitch.tv')
                             continue
@@ -213,10 +316,10 @@ class ChatManager:
                         await self._broadcast_message(chat_message)
 
                 except Exception as e:
-                    logger.error(f"Error processing YouTube chat message: {str(e)}")
+                    logger.error(f"Error processing YouTube message: {str(e)}")
 
-                # Small delay between polling
-                await asyncio.sleep(1)
+                # Standardized polling interval
+                await asyncio.sleep(15)
 
         except Exception as e:
             logger.error(f"Error in YouTube chat connection: {str(e)}")
@@ -250,7 +353,7 @@ class ChatManager:
                 user_id=tags.get('user-id'),
                 is_moderator='moderator' in tags.get('badges', ''),
                 is_subscriber='subscriber' in tags.get('badges', ''),
-                badges=tags.get('badges', '').split(',') if tags.get('badges') else []
+                badges=tags.get('badges', '').split(',')
             )
         except Exception as e:
             logger.error(f"Error parsing Twitch message: {str(e)}")
@@ -258,9 +361,12 @@ class ChatManager:
 
     def _get_platform_headers(self, platform: str) -> Dict[str, str]:
         """Get platform-specific headers"""
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        user_agent = (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/91.0.4472.124 Safari/537.36'
+        )
+        headers = {'User-Agent': user_agent}
 
         if platform == 'youtube.com':
             headers.update({
@@ -275,8 +381,38 @@ class ChatManager:
 
         return headers
 
-    async def start(self, url: str) -> None:
-        """Start WebSocket connection for chat URL"""
+    async def start(self, source) -> None:
+        """Start chat connection for URL or client
+
+        Args:
+            source: Either a URL string for YouTube/Twitch, or a client object for Kick/Instagram
+        """
+        # Handle client-based platforms (Kick and Instagram)
+        print("Source attributes:", dir(source))
+        if hasattr(source, 'get_messages'):  # Kick client
+            if 'kick_client' in self.active_tasks:
+                logger.warning("Kick chat connection already active")
+                return
+
+            self.running = True
+            logger.info("Starting Kick chat connection")
+            self.active_tasks['kick_client'] = asyncio.create_task(
+                self._handle_kick_connection(source))
+            return
+
+        elif hasattr(source, 'media_fetch_live_chat'):  # Instagram client
+            if 'instagram_client' in self.active_tasks:
+                logger.warning("Instagram chat connection already active")
+                return
+
+            self.running = True
+            logger.info("Starting Instagram chat connection")
+            self.active_tasks['instagram_client'] = asyncio.create_task(
+                self._handle_instagram_connection(source))
+            return
+
+        # Handle URL-based platforms
+        url = str(source)
         if url in self.active_tasks:
             logger.warning(f"Chat connection already active for URL: {url}")
             return
@@ -321,24 +457,3 @@ class ChatManager:
         self.websockets.clear()
 
         logger.info("Stopped all chat connections")
-
-# Example usage
-async def main():
-    chat_manager = ChatManager()
-
-    def handle_message(msg: ChatMessage):
-        print(f"[{msg.platform}] {msg.username}: {msg.message}")
-
-    chat_manager.add_listener(handle_message)
-
-    # Connect to Twitch chat
-    await chat_manager.start("https://twitch.tv/chat?channel=channel_name")
-
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        await chat_manager.stop()
-
-if __name__ == "__main__":
-    asyncio.run(main())

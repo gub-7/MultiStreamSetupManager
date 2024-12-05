@@ -161,9 +161,9 @@ def save_creds(creds, platform):
     with open(kick_creds_path, 'w') as f:
         json.dump(creds[platform], f, indent=4)
 
-def setup_kick(creds, title, category):
+async def setup_kick(creds, title, category):
     save_creds(creds, "kick")
-    return kickSetup.setup_kick_stream(creds["kick"], title, category)
+    return await kickSetup.setup_kick_stream(creds["kick"], title, category)
 
 def setup_instagram(creds, title):
     save_creds(creds, "instagram")
@@ -185,7 +185,7 @@ async def setup_platform_streams(creds, title, description, category, game, thum
 
     if "kick" in creds:
         category_or_game = game if game else category
-        kick_url = setup_kick(creds, title, category_or_game)
+        kick_url = await setup_kick(creds, title, category_or_game)
         if kick_url:
             chat_urls.append(kick_url)
 
@@ -200,8 +200,8 @@ def signal_handler(sig, frame):
     print("\nShutting down chat display...")
     sys.exit(0)
 
-async def run_chat_manager(creds, chat_urls, chat_display):
-    """Run the chat manager with WebSocket connections"""
+async def run_chat_manager(creds, chat_sources, chat_display):
+    """Run the chat manager with WebSocket connections and clients"""
     # Initialize chat manager
     cm = ChatManager()
 
@@ -220,15 +220,17 @@ async def run_chat_manager(creds, chat_urls, chat_display):
     # Add the message handler to ChatManager
     cm.add_listener(handle_chat_message)
 
-    # Start WebSocket connections for each platform
+    # Start connections for each platform
     connection_tasks = []
-    for url in chat_urls:
+    for source in chat_sources:
         try:
-            connection_task = asyncio.create_task(cm.start(url))
+            # Create task and await it immediately to ensure proper setup
+            connection_task = asyncio.create_task(cm.start(source))
+            await connection_task
             connection_tasks.append(connection_task)
-            print(f"Connecting to chat: {url}")
+            print(f"Connected to chat: {source if isinstance(source, str) else 'Kick Client'}")
         except Exception as e:
-            print(f"Failed to connect to chat {url}: {str(e)}")
+            print(f"Failed to connect to chat {source}: {str(e)}")
 
     return cm, connection_tasks
 
@@ -237,16 +239,28 @@ async def main():
         # Load credentials and setup streams
         creds = load_credentials()
         title, description, category, game, thumbnail = get_stream_details()
-        chat_urls = await setup_platform_streams(creds, title, description, category, game, thumbnail)
-        print("Stream setup complete")
 
-        # Initialize chat display
+        # Ensure stream setup completes before continuing
+        try:
+            chat_urls = await setup_platform_streams(creds, title, description, category, game, thumbnail)
+            if not chat_urls:
+                print("No chat URLs were returned from stream setup. Exiting...")
+                return
+            print("Stream setup complete")
+        except Exception as e:
+            print(f"Failed to setup streams: {str(e)}")
+            return
+
+        # Initialize chat display only after successful stream setup
         chat_display = create_chat_display()
         chat_display.start()
         signal.signal(signal.SIGINT, signal_handler)
 
-        # Start chat manager and connections
+        # Start chat manager and wait for all connections to be established
         chat_manager, connection_tasks = await run_chat_manager(creds, chat_urls, chat_display)
+        if not connection_tasks:
+            print("No chat connections were established. Exiting...")
+            return
         print("\nChat display initialized. Press Ctrl+C to exit.")
 
         # Wait for connections and keep running
