@@ -172,6 +172,7 @@ def setup_instagram(creds, title):
 
 async def setup_platform_streams(creds):
     chat_urls = []
+    forward_processes = []
 
     title = input("Enter stream title: ")
     game = input("Enter Game title (Enter to skip): ")
@@ -187,16 +188,20 @@ async def setup_platform_streams(creds):
                 chat_urls.append(url)
 
     if "kick" in creds:
-        kick_url = await setup_kick(creds, title, game if game != "" else None)
+        kick_url, forward_process = await setup_kick(creds, title, game if game != "" else None)
         if kick_url:
             chat_urls.append(kick_url)
+        if forward_process:
+            forward_processes.append(forward_process)
 
     if "instagram" in creds:
-        insta_url = setup_instagram(creds, title)
+        insta_url, forward_process = setup_instagram(creds, title)
         if insta_url:
             chat_urls.append(insta_url)
+        if forward_process:
+            forward_processes.append(forward_process)
 
-    return chat_urls
+    return chat_urls, forward_processes
 
 def signal_handler(sig, frame):
     print("\nShutting down chat display...")
@@ -243,7 +248,7 @@ async def main():
 
         # Ensure stream setup completes before continuing
         try:
-            chat_urls = await setup_platform_streams(creds)
+            chat_urls, forward_processes = await setup_platform_streams(creds)
             if not chat_urls:
                 print("No chat URLs were returned from stream setup. Exiting...")
                 return
@@ -252,8 +257,10 @@ async def main():
             print(f"Failed to setup streams: {str(e)}")
             return
 
-        # Initialize chat display only after successful stream setup
-        chat_display = create_chat_display()
+        # Initialize chat display with stream processes for monitoring
+        process1 = forward_processes[0] if len(forward_processes) > 0 else None
+        process2 = forward_processes[1] if len(forward_processes) > 1 else None
+        chat_display = create_chat_display(process1, process2)
         chat_display.start()
         signal.signal(signal.SIGINT, signal_handler)
 
@@ -262,7 +269,10 @@ async def main():
         if not connection_tasks:
             print("No chat connections were established. Exiting...")
             return
-        print("\nChat display initialized. Press Ctrl+C to exit.")
+        print("\nChat display initialized.")
+        if forward_processes:
+            print(f"Monitoring {len(forward_processes)} stream processes.")
+        print("Press Ctrl+C to exit.")
 
         # Wait for connections and keep running
         try:
@@ -274,6 +284,15 @@ async def main():
             # Cleanup
             await chat_manager.stop()
             chat_display.stop()
+
+            # Terminate any running stream processes
+            for process in forward_processes:
+                if process and process.poll() is None:
+                    try:
+                        process.terminate()
+                        process.wait(timeout=5)  # Wait up to 5 seconds for graceful shutdown
+                    except:
+                        process.kill()  # Force kill if graceful shutdown fails
 
             # Cancel any pending tasks
             for task in connection_tasks:

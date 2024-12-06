@@ -59,12 +59,12 @@ def _find_best_matching_game(games, category):
 
     return best_match
 
-def search_game(category, creds):
+def search_game(category, creds, first=12):
     """Search for a game category on Twitch."""
     headers = _create_auth_headers(creds)
     url = (
         f"{TWITCH_API_BASE_URL}"
-        f"{SEARCH_CATEGORIES_ENDPOINT}?query={category}"
+        f"{SEARCH_CATEGORIES_ENDPOINT}?query={category}&first={first}"
     )
     response = requests.get(url, headers=headers)
 
@@ -75,10 +75,6 @@ def search_game(category, creds):
 
     data = response.json()
     if not data['data']:
-        raise Exception(f"No matching category found for {category}")
-
-    best_match = _find_best_matching_game(data['data'], category)
-    if not best_match:
         raise Exception(f"No matching category found for {category}")
 
     return data['data']
@@ -127,23 +123,79 @@ def setup_twitch_stream(creds, title, game = None):
                 print(f"Search error: {e}")
                 search_query = input("Enter another category: ")
 
-        # Only show up to 5 games, but handle smaller lists
-        max_display = min(len(games), 5)
+        page = 0
+        page_size = 12
+        total_games = len(games)
+        total_pages = (total_games + page_size - 1) // page_size
+
         while True:
-            for i, game in enumerate(games[:max_display], 1):
-                print(f"{i}. {game['name']}")
+            # Clear screen for better readability
+            os.system('cls' if os.name == 'nt' else 'clear')
+
+            start_idx = page * page_size
+            end_idx = min(start_idx + page_size, total_games)
+
+            print("\nTwitch Categories:")
+            print("=" * 50)
+
+            # Display categories in two vertical columns
+            items_per_column = (end_idx - start_idx + 1) // 2 + (end_idx - start_idx) % 2
+            max_name_length = 35
+
+            # Print both columns simultaneously
+            for row in range(items_per_column):
+                # Left column
+                left_idx = start_idx + row
+                left_num = left_idx - start_idx + 1
+                left_game = games[left_idx]['name']
+                left_part = f"{left_num:2d}. {left_game:<{max_name_length}}"
+
+                # Right column (if it exists)
+                right_idx = left_idx + items_per_column
+                if right_idx < end_idx:
+                    right_num = right_idx - start_idx + 1
+                    right_game = games[right_idx]['name']
+                    right_part = f"{right_num:2d}. {right_game}"
+                    print(f"{left_part} {right_part}")
+                else:
+                    print(left_part)
+
+            print("\nNavigation:")
+            print(f"Page {page + 1} of {total_pages}")
+            print("p. Previous page    n. Next page    s. New search    q. Quit")
+            print("=" * 50)
+
+            selection = input(f"Select category (1-{end_idx-start_idx}) or navigation option: ").lower()
+
+            if selection == 'n' and end_idx < total_games:
+                page += 1
+                continue
+            elif selection == 'p':
+                page = (page - 1) if page > 0 else total_pages - 1
+                continue
+            elif selection == 's':
+                search_query = input("Enter new category search: ")
+                games = search_game(search_query, creds)
+                if games:
+                    page = 0
+                    total_games = len(games)
+                    total_pages = (total_games + page_size - 1) // page_size
+                continue
+            elif selection == 'q':
+                print("Category selection cancelled")
+                return None
 
             try:
-                selection = input(f"Select a game (1-{max_display}): ")
-                selection_idx = int(selection) - 1
-
-                if 0 <= selection_idx < max_display:
-                    selected_game = games[selection_idx]
-                    break
-                else:
-                    print(f"Please enter a number between 1 and {max_display}")
+                idx = int(selection) - 1
+                if 0 <= idx < (end_idx - start_idx):
+                    selected_game = games[start_idx + idx]
+                    print(f"\nSelected: {selected_game['name']}")
+                    return selected_game
             except ValueError:
-                print("Please enter a valid number")
+                continue
+
+            print("\nInvalid selection, please try again")
+            time.sleep(1)
 
         game_name = selected_game['name']
         category_id = selected_game['id']

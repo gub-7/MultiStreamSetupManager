@@ -1,103 +1,66 @@
 import sys
+import ffmpeg
 import subprocess
-import shutil
-import os
-import shlex
 from constants import (
-    FFMPEG_PRESET, FFMPEG_CRF, VIDEO_BITRATE, AUDIO_CODEC, AUDIO_BITRATE,
-    VIDEO_CODEC, RTMP_LOCAL_PORT, PORTRAIT
+    FFMPEG_PRESET, FFMPEG_CRF, VIDEO_BITRATE, AUDIO_BITRATE,
+    VIDEO_CODEC, RTMP_LOCAL_PORT, PORTRAIT, AUDIO_CODEC
 )
 
-def get_terminal_command():
-    """Get the appropriate terminal command for the current platform."""
-    if sys.platform == "win32":
-        # Try Windows Terminal first, fall back to cmd.exe
-        if shutil.which("wt"):
-            return ["wt"]
-        return ["cmd", "/c", "start"]
+def create_ffmpeg_stream(orientation: str, url: str, key: str) -> subprocess.Popen | None:
+    """
+    Create FFmpeg stream using ffmpeg-python library.
 
-    # For Unix-like systems (Linux and macOS)
-    terminals = [
-        # Linux terminals
-        "konsole", "gnome-terminal", "xterm", "terminator", "xfce4-terminal",
-        # macOS terminals
-        "Terminal.app", "iTerm.app"
-    ]
-
-    for terminal in terminals:
-        if terminal.endswith('.app'):  # macOS
-            if os.path.exists(f"/Applications/{terminal}"):
-                return ["open", "-a", terminal]
-        else:  # Linux
-            if shutil.which(terminal):
-                terminal_args = {
-                    "konsole": [terminal, "-e"],
-                    "gnome-terminal": [terminal, "--"],
-                    "xterm": [terminal, "-e"],
-                    "terminator": [terminal, "-e"],
-                    "xfce4-terminal": [terminal, "-e"]
-                }
-                return terminal_args.get(terminal, [terminal, "-e"])
-
-    # Fallback to xterm if nothing else is found on Unix
-    if sys.platform != "win32" and shutil.which("xterm"):
-        return ["xterm", "-e"]
-
-    raise RuntimeError("No suitable terminal found")
-
-def build_ffmpeg_command(orientation, url, key):
-    """Build the FFmpeg command string."""
-    if not url.endswith('/'):
-        url += '/'
-
-    full_url = shlex.quote(f"{url}{key}")
-
-    command = (
-        f"ffmpeg -i rtmp://localhost:{RTMP_LOCAL_PORT}/{orientation} "
-        f"-c:v {VIDEO_CODEC} "
-        f"-preset {FFMPEG_PRESET} "
-        f"-crf {FFMPEG_CRF} "
-        f"-b:v {VIDEO_BITRATE} "
-        f"-c:a {AUDIO_CODEC} "
-        f"-b:a {AUDIO_BITRATE} "
-        f"-f flv "
-        f"-tls_verify 1 "
-        f"{full_url}"
-    )
-
-    if sys.platform != "win32":
-        command += "; exec bash"  # Keep terminal open on Unix-like systems
-
-    return command
-
-def execute_command(orientation, url, key):
-    """Execute FFmpeg command using the appropriate terminal."""
+    Args:
+        orientation: Stream orientation ('PORTRAIT' or 'LANDSCAPE')
+        url: RTMP URL
+        key: Stream key
+    """
     try:
-        terminal_cmd = get_terminal_command()
-        ffmpeg_cmd = build_ffmpeg_command(orientation, url, key)
+        # Ensure URL ends with /
+        if not url.endswith('/'):
+            url += '/'
 
-        if sys.platform == "win32":
-            if terminal_cmd[0] == "wt":
-                subprocess.Popen([*terminal_cmd, "powershell", "-Command", ffmpeg_cmd])
-            else:
-                subprocess.Popen([*terminal_cmd, "cmd", "/k", ffmpeg_cmd])
-        else:
-            subprocess.Popen([*terminal_cmd, "bash", "-c", ffmpeg_cmd])
+        # Build input/output URLs
+        input_url = f"rtmp://localhost:{RTMP_LOCAL_PORT}/{orientation}"
+        output_url = f"{url}{key}"
 
-    except RuntimeError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-def forward_stream(orientation=PORTRAIT, url="", key=""):
-    """Forward stream using FFmpeg with specified parameters."""
-    execute_command(orientation, url, key)
-
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print(
-            f"Usage: {sys.argv[0]} "
-            "<\"PORTRAIT\"/\"LANDSCAPE\"> <URL> <KEY>"
+        # Create stream with input options
+        stream = ffmpeg.input(
+            input_url,
+            f='flv'  # Input format
         )
+
+        # Add output options
+        stream = ffmpeg.output(
+            stream,
+            output_url,
+            vcodec=VIDEO_CODEC,
+            acodec=AUDIO_CODEC,
+            preset=FFMPEG_PRESET,
+            crf=FFMPEG_CRF,
+            video_bitrate=VIDEO_BITRATE,
+            audio_bitrate=AUDIO_BITRATE,
+            format='flv',
+            tls_verify=1
+        )
+
+        # Run the stream (non-blocking)
+        process = ffmpeg.run_async(
+            stream,
+            quiet=True,
+            overwrite_output=True
+        )
+
+        # Keep the process reference
+        return process
+
+    except ffmpeg.Error as e:
+        print(f"FFmpeg error occurred: {e.stderr.decode() if e.stderr else str(e)}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
         sys.exit(1)
 
-    forward_stream(sys.argv[1], sys.argv[2], sys.argv[3])
+def forward_stream(orientation=PORTRAIT, url="", key="") -> subprocess.Popen | None:
+    """Forward stream using FFmpeg with specified parameters."""
+    return create_ffmpeg_stream(orientation, url, key)

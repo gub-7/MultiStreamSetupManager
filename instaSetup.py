@@ -18,6 +18,6 @@ def setup_instagram_stream(creds, title):
     url = response['upload_url'][:response['upload_url'].find('/rtmp/') + 6]
     stream_key = response['upload_url'][response['upload_url'].find('/rtmp/') + 6:]
 
-    streamForward.forward_stream(PORTRAIT_MODE, url, stream_key)
+    process = streamForward.forward_stream(PORTRAIT_MODE, url, stream_key)
     client.username=response['broadcast_id']
-    return client
+    return client, process

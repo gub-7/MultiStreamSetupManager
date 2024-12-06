@@ -226,44 +226,72 @@ def _select_category(yt_client, game=None):
         print("Failed to fetch categories, using default category")
         return DEFAULT_CATEGORY_ID
 
-    # Display up to 5 categories at a time
+    # Display 12 categories at a time
     categories = response['items']
     total_categories = len(categories)
     page = 0
-    page_size = 5
+    page_size = 12
+    total_pages = (total_categories + page_size - 1) // page_size
 
     while True:
         start_idx = page * page_size
         end_idx = min(start_idx + page_size, total_categories)
 
-        print("\nAvailable categories:")
-        for i, item in enumerate(categories[start_idx:end_idx], 1):
-            print(f"{i}. {item['snippet']['title']}")
+        # Clear screen for better readability
+        os.system('cls' if os.name == 'nt' else 'clear')
 
-        if end_idx < total_categories:
-            print("n. Next page")
-        if page > 0:
-            print("p. Previous page")
+        print("\nYouTube Categories:")
+        print("=" * 50)
 
-        selection = input(f"Select category (1-{end_idx-start_idx}): ").lower()
+        # Display categories in two vertical columns
+        items_per_column = (end_idx - start_idx + 1) // 2 + (end_idx - start_idx) % 2
+        max_name_length = 30
+
+        # Print both columns simultaneously
+        for row in range(items_per_column):
+            # Left column
+            left_idx = start_idx + row
+            left_num = left_idx - start_idx + 1
+            left_cat = categories[left_idx]['snippet']['title']
+            left_part = f"{left_num:2d}. {left_cat:<{max_name_length}}"
+
+            # Right column (if it exists)
+            right_idx = left_idx + items_per_column
+            if right_idx < end_idx:
+                right_num = right_idx - start_idx + 1
+                right_cat = categories[right_idx]['snippet']['title']
+                right_part = f"{right_num:2d}. {right_cat}"
+                print(f"{left_part} {right_part}")
+            else:
+                print(left_part)
+
+        print("\nNavigation:")
+        print(f"Page {page + 1} of {total_pages}")
+        print("p. Previous page    n. Next page    q. Quit")
+        print("=" * 50)
+
+        selection = input(f"Select category (1-{end_idx-start_idx}) or navigation option: ").lower()
 
         if selection == 'n' and end_idx < total_categories:
             page += 1
             continue
-        if selection == 'p' and page > 0:
-            page -= 1
+        elif selection == 'p':
+            page = (page - 1) if page > 0 else total_pages - 1
             continue
+        elif selection == 'q':
+            return DEFAULT_CATEGORY_ID
 
         try:
             idx = int(selection) - 1
             if 0 <= idx < (end_idx - start_idx):
                 selected = categories[start_idx + idx]
-                print(f"Selected: {selected['snippet']['title']}")
+                print(f"\nSelected: {selected['snippet']['title']}")
                 return selected['id']
         except ValueError:
-            print("Please enter a valid number")
+            continue
 
-        print("Invalid selection, please try again")
+        print("\nInvalid selection, please try again")
+        time.sleep(1)
 
 def setup_youtube_streams(creds, title, game=None):
     """Set up YouTube live streams."""

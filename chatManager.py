@@ -201,11 +201,20 @@ class ChatManager:
     async def _process_kick_messages(
         self,
         messages: list,
-        seen_ids: set
+        seen_ids: set,
+        is_first_batch: bool = False
     ) -> None:
         """Process new Kick messages"""
+        now = datetime.now()
+        cutoff_time = now.timestamp() - 120  # 2 minutes ago
+
         for item in reversed(messages):
             if item.id in seen_ids:
+                continue
+
+            # Skip old messages in first batch
+            if is_first_batch and item.created_at.timestamp() < cutoff_time:
+                seen_ids.add(item.id)
                 continue
 
             seen_ids.add(item.id)
@@ -216,6 +225,7 @@ class ChatManager:
         """Handle Kick chat using authenticated client"""
         seen_ids = set()
         poll_interval = 15  # Standardized polling interval
+        first_batch = True
 
         try:
             user = await client.fetch_user(client.user.username)
@@ -226,7 +236,8 @@ class ChatManager:
             while self.running:
                 try:
                     msgs = await client.get_messages(user.channel_id)
-                    await self._process_kick_messages(msgs, seen_ids)
+                    await self._process_kick_messages(msgs, seen_ids, first_batch)
+                    first_batch = False
 
                     if len(seen_ids) > 1000:
                         seen_ids.clear()
