@@ -84,6 +84,13 @@ class ChatDisplay:
             'prefix': f'[{platform.upper()}]'
         })
 
+        # Handle Kick's Author object
+        if platform.lower() == 'kick' and hasattr(username, 'username'):
+            username = username.username
+
+        # Convert username to string if it isn't already
+        username = str(username)
+
         # Calculate prefix for wrapping
         prefix = f"{timestamp} {platform_format['prefix']} {username}: "
         prefix_length = len(prefix) - len(platform_format['prefix']) - len(username) - 4  # Basic length without ANSI codes
@@ -112,7 +119,34 @@ class ChatDisplay:
 
     def add_message(self, platform, username, message):
         """Add a message to the queue for display."""
+        # Debug information for message receipt
+        platform_lower = platform.lower()
+        debug_info = f"\033[K[DEBUG {datetime.now().strftime('%H:%M:%S')}] "
+
+        if platform_lower == 'youtube':
+            print(f"{debug_info}{Fore.RED}YouTube Message Received:"
+                  f"\n\tUsername: {username}"
+                  f"\n\tMessage: {message}"
+                  f"\n\tRaw data received{Style.RESET_ALL}")
+        elif platform_lower == 'kick':
+            print(f"{debug_info}{Fore.GREEN}Kick Message Received:"
+                  f"\n\tUsername type: {type(username)}"
+                  f"\n\tUsername raw: {username}"
+                  f"\n\tUsername attrs: {dir(username) if hasattr(username, '__dir__') else 'No attributes'}"
+                  f"\n\tMessage type: {type(message)}"
+                  f"\n\tMessage: {message}"
+                  f"\n\tRaw data received{Style.RESET_ALL}")
+        else:
+            print(f"{debug_info}{Fore.WHITE}Other Platform ({platform}) Message:"
+                  f"\n\tUsername: {username}"
+                  f"\n\tMessage: {message}{Style.RESET_ALL}")
+
+        stdout.flush()
         self.message_queue.put((platform, username, message))
+
+        # Additional debug info for queue
+        print(f"{debug_info}Queue size: {self.message_queue.qsize()}{Style.RESET_ALL}")
+        stdout.flush()
 
     def display_header(self):
         """Display the chat window header with stream status."""

@@ -59,7 +59,7 @@ def _find_best_matching_game(games, category):
 
     return best_match
 
-def search_game(category, creds, first=12):
+def search_game(category, creds, first=8):
     """Search for a game category on Twitch."""
     headers = _create_auth_headers(creds)
     url = (
@@ -124,7 +124,7 @@ def setup_twitch_stream(creds, title, game = None):
                 search_query = input("Enter another category: ")
 
         page = 0
-        page_size = 12
+        page_size = 8
         total_games = len(games)
         total_pages = (total_games + page_size - 1) // page_size
 
@@ -138,27 +138,12 @@ def setup_twitch_stream(creds, title, game = None):
             print("\nTwitch Categories:")
             print("=" * 50)
 
-            # Display categories in two vertical columns
-            items_per_column = (end_idx - start_idx + 1) // 2 + (end_idx - start_idx) % 2
-            max_name_length = 35
-
-            # Print both columns simultaneously
-            for row in range(items_per_column):
-                # Left column
-                left_idx = start_idx + row
-                left_num = left_idx - start_idx + 1
-                left_game = games[left_idx]['name']
-                left_part = f"{left_num:2d}. {left_game:<{max_name_length}}"
-
-                # Right column (if it exists)
-                right_idx = left_idx + items_per_column
-                if right_idx < end_idx:
-                    right_num = right_idx - start_idx + 1
-                    right_game = games[right_idx]['name']
-                    right_part = f"{right_num:2d}. {right_game}"
-                    print(f"{left_part} {right_part}")
-                else:
-                    print(left_part)
+            # Display categories in a single vertical column
+            max_name_length = 50
+            for idx in range(start_idx, end_idx):
+                game_num = idx - start_idx + 1
+                game_name = games[idx]['name']
+                print(f"{game_num:2d}. {game_name:<{max_name_length}}")
 
             print("\nNavigation:")
             print(f"Page {page + 1} of {total_pages}")
@@ -190,18 +175,19 @@ def setup_twitch_stream(creds, title, game = None):
                 if 0 <= idx < (end_idx - start_idx):
                     selected_game = games[start_idx + idx]
                     print(f"\nSelected: {selected_game['name']}")
+
+                    game_name = selected_game['name']
+                    category_id = selected_game['id']
+                    print(f"Selected game: {game_name} (ID: {category_id})")
+
+                    if title:  # Only update if title is provided
+                        update_twitch_stream(broadcaster_id, title, category_id, creds)
                     return selected_game
             except ValueError:
                 continue
 
             print("\nInvalid selection, please try again")
-            time.sleep(1)
 
-        game_name = selected_game['name']
-        category_id = selected_game['id']
-        print(f"Selected game: {game_name} (ID: {category_id})")
-
-        update_twitch_stream(broadcaster_id, title, category_id, creds)
     except Exception as e:
         print(f"Error: {e}")
 
