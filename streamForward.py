@@ -64,3 +64,34 @@ def create_ffmpeg_stream(orientation: str, url: str, key: str) -> subprocess.Pop
 def forward_stream(orientation=PORTRAIT, url="", key="") -> subprocess.Popen | None:
     """Forward stream using FFmpeg with specified parameters."""
     return create_ffmpeg_stream(orientation, url, key)
+
+def main():
+    """
+    Main function to start the stream forwarding.
+    Usage: python streamForward.py [orientation] [url] [key]
+    Default orientation is PORTRAIT if not specified
+    """
+    args = sys.argv[1:]
+
+    if len(args) == 0:
+        process = forward_stream()
+    elif len(args) == 3:
+        orientation, url, key = args
+        process = forward_stream(orientation=orientation, url=url, key=key)
+    else:
+        print("Usage: python streamForward.py [orientation] [url] [key]")
+        print("Example: python streamForward.py PORTRAIT rtmp://example.com streamkey123")
+        sys.exit(1)
+
+    try:
+        # Keep the script running while the FFmpeg process is active
+        if process:
+            process.wait()
+    except KeyboardInterrupt:
+        if process:
+            process.terminate()
+            process.wait()
+        print("\nStream terminated by user")
+
+if __name__ == "__main__":
+    main()
