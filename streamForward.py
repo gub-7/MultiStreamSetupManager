@@ -21,7 +21,7 @@ def create_ffmpeg_stream(orientation: str, url: str, key: str) -> subprocess.Pop
             url += '/'
 
         # Build input/output URLs
-        input_url = f"rtmp://localhost:{RTMP_LOCAL_PORT}/{orientation}"
+        input_url = f"rtmp://localhost:{RTMP_LOCAL_PORT}/live/{orientation}"
         output_url = f"{url}{key}"
 
         # Create stream with input options
