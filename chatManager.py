@@ -174,8 +174,6 @@ class ChatManager:
                         seen_message_ids,
                         last_ts
                     )
-                    heartbeat = await client.media_fetch_heartbeat_and_viewer_count(broadcast_id)
-                    print(heartbeat)
 
                     if len(seen_message_ids) > 1000:
                         seen_message_ids.clear()
