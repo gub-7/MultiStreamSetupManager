@@ -180,7 +180,6 @@ if %errorlevel% equ 0 (
 for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "system_path=%%b"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path') do set "user_path=%%b"
 set "PATH=%system_path%;%user_path%"
-goto :eof
 
 :: Ask about existing NGINX installation
 set /p CUSTOM_NGINX="Do you have an existing NGINX installation that you want to manage yourself? (y/n): "
