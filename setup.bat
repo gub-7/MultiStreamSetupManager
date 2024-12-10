@@ -64,35 +64,98 @@ goto :eof
 :StartSetup
 
 :: Check/Install Python
-python --version >nul 2>&1
+echo Checking for Python 3.11...
+powershell -Command "& { if (Get-Command python -ErrorAction SilentlyContinue) { $version = python -V 2>&1; if ($version -match '3\.11\.') { exit 0 } }; exit 1 }"
 if %errorlevel% neq 0 (
-    echo Python not found. Installing Python...
-    winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements
-    :: Update PATH for this session and permanently
-    set "PYTHON_PATH=%LOCALAPPDATA%\Programs\Python\Python311"
-    set "PYTHON_SCRIPTS=%LOCALAPPDATA%\Programs\Python\Python311\Scripts"
-    set "PATH=%PATH%;%PYTHON_PATH%;%PYTHON_SCRIPTS%"
-    call :AddToPath "%PYTHON_PATH%"
-    call :AddToPath "%PYTHON_SCRIPTS%"
+    echo Python 3.11 not found. Installing Python...
+    winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
+    if %errorlevel% neq 0 (
+        echo Failed to install Python via winget. Please install Python 3.11 manually.
+        echo Visit: https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+
+    :: Wait for installation to complete and verify
+    timeout /t 5 /nobreak
+
+    :: Refresh PATH
+    call :RefreshPath
+
+    :: Verify Python installation
+    powershell -Command "& { if (Get-Command python -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    if %errorlevel% neq 0 (
+        echo Python installation failed or PATH not updated. Please restart your computer and run setup again.
+        pause
+        exit /b 1
+    )
+    echo Python installed successfully!
 )
 
 :: Check/Install Go
-go version >nul 2>&1
+echo Checking for Go...
+powershell -Command "& { if (Get-Command go -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
 if %errorlevel% neq 0 (
     echo Go not found. Installing Go...
-    winget install GoLang.Go --accept-source-agreements --accept-package-agreements
-    :: Update PATH for this session and permanently
-    set "GO_PATH=%PROGRAMFILES%\Go\bin"
-    set "PATH=%PATH%;%GO_PATH%"
-    call :AddToPath "%GO_PATH%"
+    winget install GoLang.Go --accept-source-agreements --accept-package-agreements --silent
+    if %errorlevel% neq 0 (
+        echo Failed to install Go. Please install Go manually.
+        echo Visit: https://golang.org/dl/
+        pause
+        exit /b 1
+    )
+
+    :: Wait for installation to complete
+    timeout /t 5 /nobreak
+
+    :: Refresh PATH
+    call :RefreshPath
+
+    :: Verify Go installation
+    powershell -Command "& { if (Get-Command go -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    if %errorlevel% neq 0 (
+        echo Go installation failed or PATH not updated. Please restart your computer and run setup again.
+        pause
+        exit /b 1
+    )
+    echo Go installed successfully!
 )
 
-:: Install FFmpeg using winget
-winget list FFmpeg >nul 2>&1
+:: Check/Install FFmpeg
+echo Checking for FFmpeg...
+powershell -Command "& { if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
 if %errorlevel% neq 0 (
-    echo Installing FFmpeg...
-    winget install FFmpeg
+    echo FFmpeg not found. Installing FFmpeg...
+    winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements --silent
+    if %errorlevel% neq 0 (
+        echo Failed to install FFmpeg. Please install FFmpeg manually.
+        echo Visit: https://ffmpeg.org/download.html
+        pause
+        exit /b 1
+    )
+
+    :: Wait for installation to complete
+    timeout /t 5 /nobreak
+
+    :: Refresh PATH
+    call :RefreshPath
+
+    :: Verify FFmpeg installation
+    powershell -Command "& { if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    if %errorlevel% neq 0 (
+        echo FFmpeg installation failed or PATH not updated. Please restart your computer and run setup again.
+        pause
+        exit /b 1
+    )
+    echo FFmpeg installed successfully!
 )
+
+:: Function to refresh PATH environment
+:RefreshPath
+for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "system_path=%%b"
+for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path') do set "user_path=%%b"
+set "PATH=%system_path%;%user_path%"
+goto :eof
 
 :: Ask about existing NGINX installation
 set /p CUSTOM_NGINX="Do you have an existing NGINX installation that you want to manage yourself? (y/n): "
