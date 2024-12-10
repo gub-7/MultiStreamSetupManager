@@ -128,7 +128,7 @@ goto :AddToPath_Return
 :StartSetup
 
 :: Check/Install Python
-echo Checking for Python 3...
+echo Checking for Python...
 where python >nul 2>&1
 if %errorlevel% equ 0 (
     python --version
@@ -143,10 +143,10 @@ if %errorlevel% equ 0 (
     )
 )
 
-echo Python not found. Installing Python...
-winget install Python.Python --accept-source-agreements --accept-package-agreements --silent
+echo Python not found. Installing Python 3.13...
+winget install Python.Python.3.13 --accept-source-agreements --accept-package-agreements --silent
 if %errorlevel% neq 0 (
-    echo Failed to install Python via winget. Please install Python manually.
+    echo Failed to install Python 3.13 via winget. Please install Python manually.
     echo Visit: https://www.python.org/downloads/
     pause
     exit /b 1
