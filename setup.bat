@@ -191,7 +191,7 @@ if %errorlevel% equ 0 (
     call :RefreshPath
 
     :: Verify Go installation
-    powershell -Command "& { if (Get-Command go -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    go version >nul 2>&1
     if %errorlevel% neq 0 (
         echo Go installation failed or PATH not updated. Please restart your computer and run setup again.
         pause
@@ -226,7 +226,7 @@ if %errorlevel% equ 0 (
     call :RefreshPath
 
     :: Verify FFmpeg installation
-    powershell -Command "& { if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    ffmpeg -version >nul 2>&1
     if %errorlevel% neq 0 (
         echo FFmpeg installation failed or PATH not updated. Please restart your computer and run setup again.
         pause
@@ -271,10 +271,10 @@ echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
 echo Extracting NGINX-RTMP...
 tar -xf temp\nginx-rtmp.zip -C temp
 if not exist "temp\nginx-rtmp-win32-1.2.1" (
-    echo Tar extraction failed, attempting PowerShell fallback...
-    powershell -Command "& {Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('temp\nginx-rtmp.zip', 'temp')}"
+    echo Tar extraction failed, attempting expand.exe fallback...
+    expand -F:* temp\nginx-rtmp.zip temp\
     if not exist "temp\nginx-rtmp-win32-1.2.1" (
-        echo Failed to extract NGINX-RTMP using both tar and PowerShell
+        echo Failed to extract NGINX-RTMP
         pause
         exit /b 1
     )
