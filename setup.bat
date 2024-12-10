@@ -297,6 +297,9 @@ set /p TWITCH_URL="Enter Twitch URL (or press Enter to skip): "
 set /p YOUTUBE_URL="Enter YouTube URL for landscape (or press Enter to skip): "
 set /p YOUTUBE_PORTRAIT_URL="Enter YouTube URL for portrait (or press Enter to skip): "
 
+:: Create conf directory if it doesn't exist
+if not exist "nginx\conf" mkdir "nginx\conf"
+
 :: Create NGINX configuration
 echo Creating NGINX configuration...
 (
@@ -313,7 +316,7 @@ echo.
 echo         application landscape {
 echo             live on;
 echo             record off;
-) > nginx\conf\nginx.conf
+) > "nginx\conf\nginx.conf"
 
 :: Add Twitch push if URL provided
 if not "!TWITCH_URL!"=="" (
@@ -384,12 +387,16 @@ if not exist "%NGINX_PATH%" (
 taskkill /F /IM nginx.exe /T >nul 2>&1
 
 :: Start NGINX with output
-"%NGINX_PATH%"
+cd nginx
+nginx.exe
 if %errorlevel% neq 0 (
-    echo Failed to start NGINX
+    echo Failed to start NGINX. Checking error log...
+    if exist "logs\error.log" type "logs\error.log"
+    cd ..
     pause
     exit /b 1
 )
+cd ..
 
 :: Verify NGINX is running
 timeout /t 2 /nobreak >nul
