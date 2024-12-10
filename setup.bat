@@ -51,7 +51,8 @@ if %errorlevel% equ 0 (
 echo Proceeding past winget check...
 pause
 
-:: Function to permanently add to PATH
+goto :StartSetup
+
 :AddToPath
 setlocal EnableDelayedExpansion
 set "PathToAdd=%~1"
@@ -59,6 +60,8 @@ set "PathToAdd=%~1"
 powershell -Command "& {$newPath='%PathToAdd%'; $currentPath=[Environment]::GetEnvironmentVariable('PATH', 'Machine'); if ($currentPath -notlike '*' + $newPath + '*') {[Environment]::SetEnvironmentVariable('PATH', $currentPath + ';' + $newPath, 'Machine')}}"
 endlocal
 goto :eof
+
+:StartSetup
 
 :: Check/Install Python
 python --version >nul 2>&1
