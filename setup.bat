@@ -84,16 +84,10 @@ if %errorlevel% equ 0 (
     echo Tar not found. Installing tar...
     winget install GnuWin32.Tar --accept-source-agreements --accept-package-agreements --silent
     if %errorlevel% neq 0 (
-        echo Failed to install tar via winget.
-        echo Attempting alternative installation...
-        :: Try alternative package
-        winget install Microsoft.WindowsSDK --accept-source-agreements --accept-package-agreements --silent
-        if %errorlevel% neq 0 (
-            echo Failed to install tar. Please install Windows SDK manually.
-            echo Visit: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
-            pause
-            exit /b 1
-        )
+        echo Failed to install tar. Please install tar manually.
+        echo Visit: http://gnuwin32.sourceforge.net/packages/tar.htm
+        pause
+        exit /b 1
     )
 
     :: Wait for installation to complete
@@ -267,17 +261,13 @@ if not exist "temp\nginx-rtmp.zip" (
 )
 echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
 
-:: Try to extract NGINX-RTMP using tar
+:: Extract NGINX-RTMP using tar
 echo Extracting NGINX-RTMP...
 tar -xf temp\nginx-rtmp.zip -C temp
 if not exist "temp\nginx-rtmp-win32-1.2.1" (
-    echo Tar extraction failed, attempting expand.exe fallback...
-    expand -F:* temp\nginx-rtmp.zip temp\
-    if not exist "temp\nginx-rtmp-win32-1.2.1" (
-        echo Failed to extract NGINX-RTMP
-        pause
-        exit /b 1
-    )
+    echo Failed to extract NGINX-RTMP. Please ensure tar is installed correctly.
+    pause
+    exit /b 1
 )
 echo Successfully extracted NGINX-RTMP to: %CD%\temp\nginx-rtmp-win32-1.2.1
 
