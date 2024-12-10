@@ -6,7 +6,6 @@ echo Current directory: %CD%
 echo.
 
 echo Checking and installing prerequisites...
-pause
 
 :: Check for winget by running version command
 echo Checking for winget...
@@ -399,48 +398,11 @@ if %errorlevel% neq 0 (
     echo Failed to start NGINX. Checking error log...
     if exist "logs\error.log" type "logs\error.log"
     cd ..
-    pause
     exit /b 1
 )
-cd ..
-
-:: Verify NGINX is running
-timeout /t 2 /nobreak >nul
-tasklist | find "nginx.exe" >nul
-if %errorlevel% neq 0 (
-    echo ERROR: NGINX failed to start
-    pause
-    exit /b 1
-)
-echo NGINX started successfully!
 
 :: Clean up temp directory
-echo.
-echo Cleaning up temporary files...
-rd /s /q temp
-echo Cleanup complete!
+rd /s /q ..\temp
 
-:: Display NGINX installation information
-echo.
-echo NGINX Installation Summary:
-echo -------------------------
-echo Executable: %NGINX_PATH%
-echo Config file: %CD%\nginx\conf\nginx.conf
-echo Logs directory: %CD%\nginx\logs
-echo.
-
-:SKIP_NGINX
-echo Setup complete!
-if /i not "!CUSTOM_NGINX!"=="y" (
-    echo NGINX-RTMP server is running.
-    echo Portrait stream endpoint: rtmp://localhost:1935/portrait
-    echo Landscape stream endpoint: rtmp://localhost:1935/landscape
-)
-echo Portrait stream endpoint: rtmp://localhost:1935/portrait
-echo Landscape stream endpoint: rtmp://localhost:1935/landscape
-
-echo Installing Kick bypass...
-python -m kick bypass create
-python -m kick bypass install
-
-pause
+echo NGINX started successfully!
+exit /b 0
