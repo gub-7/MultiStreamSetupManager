@@ -8,42 +8,21 @@ echo.
 echo Checking and installing prerequisites...
 pause
 
-:: Check for winget using where command
+:: Check for winget by running version command
 echo Checking for winget...
-where winget >nul 2>&1
+winget --version >nul 2>&1
 if %errorlevel% equ 0 (
-    echo Winget is already installed, continuing...
-    pause
+    echo Winget is already installed:
+    winget --version
+    echo.
+    echo Continuing with setup...
 ) else (
-    echo Winget not found. Attempting to install...
 
-    :: Create temp directory for winget installation
-    if not exist "temp" mkdir temp
-    cd temp
-
-    :: Direct user to Microsoft Store for winget installation
-    echo Please install App Installer (winget) from the Microsoft Store
+    echo Winget not found. Please install App Installer from the Microsoft Store
     echo Visit: https://www.microsoft.com/store/productId/9NBLGGH4NNS1
     echo After installation, please restart this script
     pause
     exit /b 1
-
-    :: Clean up
-    cd ..
-    rd /s /q temp
-
-    :: Verify installation
-    powershell -Command "& { if (Get-Command winget -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
-    if %errorlevel% neq 0 (
-        echo Error: Failed to install winget. Please install manually from the Microsoft Store.
-        echo.
-        echo Script completed with errorlevel: %errorlevel%
-        echo Press any key to exit...
-        pause >nul
-        exit /b 1
-    )
-    echo Winget installed successfully!
-    pause
 )
 
 :: Add debug pause to see if we get past winget check
