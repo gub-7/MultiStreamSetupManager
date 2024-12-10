@@ -93,18 +93,24 @@ if %errorlevel% equ 0 (
     :: Wait for installation to complete
     timeout /t 5 /nobreak
 
-    :: Refresh PATH
-    for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
-
-    :: Verify tar installation
-    tar --version >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo Tar installation failed or PATH not updated.
+    :: Look for tar in common installation locations
+    if exist "C:\Program Files (x86)\GnuWin32\bin\tar.exe" (
+        set "TAR_PATH=C:\Program Files (x86)\GnuWin32\bin\tar.exe"
+    ) else if exist "C:\Program Files\GnuWin32\bin\tar.exe" (
+        set "TAR_PATH=C:\Program Files\GnuWin32\bin\tar.exe"
+    ) else (
+        echo Could not find tar.exe in common locations.
         echo Please restart your computer and run setup again.
         pause
         exit /b 1
     )
+    echo Found tar at: !TAR_PATH!
     echo Tar installed successfully!
+)
+
+:: Set TAR_PATH if not already set
+if not defined TAR_PATH (
+    for /f "delims=" %%i in ('where tar 2^>nul') do set "TAR_PATH=%%i"
 )
 
 goto :StartSetup
@@ -263,7 +269,7 @@ echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
 
 :: Extract NGINX-RTMP using tar
 echo Extracting NGINX-RTMP...
-tar -xf temp\nginx-rtmp.zip -C temp
+"%TAR_PATH%" -xf temp\nginx-rtmp.zip -C temp
 if not exist "temp\nginx-rtmp-win32-1.2.1" (
     echo Failed to extract NGINX-RTMP. Please ensure tar is installed correctly.
     pause
