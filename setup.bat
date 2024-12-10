@@ -180,7 +180,6 @@ if %errorlevel% equ 0 (
 for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "system_path=%%b"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path') do set "user_path=%%b"
 set "PATH=%system_path%;%user_path%"
-goto :eof
 
 :: Ask about existing NGINX installation
 set /p CUSTOM_NGINX="Do you have an existing NGINX installation that you want to manage yourself? (y/n): "
@@ -189,17 +188,48 @@ if /i "!CUSTOM_NGINX!"=="y" (
     goto SKIP_NGINX
 )
 
+echo.
+echo Starting NGINX installation...
+echo Current directory: %CD%
+
 :: Create temp directory
 if not exist "temp" mkdir temp
+echo Created temp directory at: %CD%\temp
 
-:: Download and extract NGINX-RTMP
+:: Download NGINX-RTMP
 echo Downloading NGINX-RTMP...
 powershell -Command "& {Invoke-WebRequest -Uri 'https://github.com/illuspas/nginx-rtmp-win32/archive/refs/tags/v1.2.1.zip' -OutFile 'temp\nginx-rtmp.zip'}"
+if not exist "temp\nginx-rtmp.zip" (
+    echo Failed to download NGINX-RTMP
+    pause
+    exit /b 1
+)
+echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
+
+:: Extract NGINX-RTMP
+echo Extracting NGINX-RTMP...
 powershell -Command "& {Expand-Archive -Path 'temp\nginx-rtmp.zip' -DestinationPath 'temp' -Force}"
+if not exist "temp\nginx-rtmp-win32-1.2.1" (
+    echo Failed to extract NGINX-RTMP
+    pause
+    exit /b 1
+)
+echo Successfully extracted NGINX-RTMP to: %CD%\temp\nginx-rtmp-win32-1.2.1
 
 :: Move NGINX to proper location
-if exist "nginx" rd /s /q "nginx"
+echo Moving NGINX to final location...
+if exist "nginx" (
+    echo Removing existing NGINX directory...
+    rd /s /q "nginx"
+)
 move "temp\nginx-rtmp-win32-1.2.1" "nginx"
+if not exist "nginx\nginx.exe" (
+    echo Failed to properly install NGINX. nginx.exe not found.
+    echo Expected location: %CD%\nginx\nginx.exe
+    pause
+    exit /b 1
+)
+echo Successfully installed NGINX to: %CD%\nginx
 
 :: Get stream URLs from user
 set /p TWITCH_URL="Enter Twitch URL (or press Enter to skip): "
@@ -279,11 +309,51 @@ if %errorlevel% neq 0 (
 )
 
 :: Start NGINX
+echo.
 echo Starting NGINX...
-start /B "%NGINX_PATH%"
+echo NGINX Path: %NGINX_PATH%
+
+if not exist "%NGINX_PATH%" (
+    echo ERROR: NGINX executable not found at: %NGINX_PATH%
+    pause
+    exit /b 1
+)
+
+:: Kill any existing NGINX process
+taskkill /F /IM nginx.exe /T >nul 2>&1
+
+:: Start NGINX with output
+"%NGINX_PATH%"
+if %errorlevel% neq 0 (
+    echo Failed to start NGINX
+    pause
+    exit /b 1
+)
+
+:: Verify NGINX is running
+timeout /t 2 /nobreak >nul
+tasklist | find "nginx.exe" >nul
+if %errorlevel% neq 0 (
+    echo ERROR: NGINX failed to start
+    pause
+    exit /b 1
+)
+echo NGINX started successfully!
 
 :: Clean up temp directory
+echo.
+echo Cleaning up temporary files...
 rd /s /q temp
+echo Cleanup complete!
+
+:: Display NGINX installation information
+echo.
+echo NGINX Installation Summary:
+echo -------------------------
+echo Executable: %NGINX_PATH%
+echo Config file: %CD%\nginx\conf\nginx.conf
+echo Logs directory: %CD%\nginx\logs
+echo.
 
 :SKIP_NGINX
 echo Setup complete!
