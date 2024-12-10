@@ -59,7 +59,9 @@ set "PathToAdd=%~1"
 :: Check if path already exists in system PATH
 powershell -Command "& {$newPath='%PathToAdd%'; $currentPath=[Environment]::GetEnvironmentVariable('PATH', 'Machine'); if ($currentPath -notlike '*' + $newPath + '*') {[Environment]::SetEnvironmentVariable('PATH', $currentPath + ';' + $newPath, 'Machine')}}"
 endlocal
-goto :eof
+goto :AddToPath_Return
+
+:AddToPath_Return
 
 :StartSetup
 
@@ -84,7 +86,9 @@ echo Python 3.11 not found. Installing Python...
     timeout /t 5 /nobreak
 
     :: Refresh PATH
+    set "RETURN_LABEL=After_Python_Path"
     call :RefreshPath
+    :After_Python_Path
 
     :: Verify Python installation
     python --version 2>nul | find "3.11" >nul
@@ -103,8 +107,12 @@ echo Python 3.11 not found. Installing Python...
 
 :: Check/Install Go
 echo Checking for Go...
-powershell -Command "& { if (Get-Command go -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
-if %errorlevel% neq 0 (
+go version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Go is already installed:
+    go version
+    goto GO_INSTALLED
+)
     echo Go not found. Installing Go...
     winget install GoLang.Go --accept-source-agreements --accept-package-agreements --silent
     if %errorlevel% neq 0 (
@@ -130,10 +138,16 @@ if %errorlevel% neq 0 (
     echo Go installed successfully!
 )
 
+:GO_INSTALLED
+
 :: Check/Install FFmpeg
 echo Checking for FFmpeg...
-powershell -Command "& { if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
-if %errorlevel% neq 0 (
+ffmpeg -version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo FFmpeg is already installed:
+    ffmpeg -version
+    goto FFMPEG_INSTALLED
+)
     echo FFmpeg not found. Installing FFmpeg...
     winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements --silent
     if %errorlevel% neq 0 (
@@ -158,6 +172,8 @@ if %errorlevel% neq 0 (
     )
     echo FFmpeg installed successfully!
 )
+
+:FFMPEG_INSTALLED
 
 :: Function to refresh PATH environment
 :RefreshPath
