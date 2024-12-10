@@ -3,6 +3,7 @@ import streamForward
 from kick import Client, Credentials
 from constants import RTMPS_PREFIX, APP_PATH, STREAM_MODE
 import logging
+import subprocess
 
 
 async def create_credentials(creds):
@@ -19,7 +20,33 @@ async def setup_kick_stream(creds, title, game=None):
     client = Client()
     credentials = await create_credentials(creds)
 
-    await client.login(credentials)
+    # Try to login first
+    try:
+        print('Attempting login...')
+        response = await client.login(credentials)
+        print('Login successful')
+    except Exception as e:
+        print(f'Login failed: {str(e)}')
+        print('Running bypass script...')
+
+        # Start the bypass process and wait a moment for it to initialize
+        bypass_process = subprocess.Popen(
+            ["go", "run", "bypass.go"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE
+        )
+        await asyncio.sleep(10)  # Give bypass script time to start
+
+        # Try login again
+        try:
+            response = await client.login(credentials)
+            print('Login successful after bypass')
+        except Exception as e:
+            print(f'Login failed even with bypass: {str(e)}')
+            if bypass_process:
+                bypass_process.terminate()
+            raise
     # Note: The API wrapper documentation doesn't show how to set
     # stream title/category. You may need to extend this once that
     # functionality is documented
