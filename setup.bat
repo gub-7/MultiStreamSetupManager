@@ -8,15 +8,13 @@ echo.
 echo Checking and installing prerequisites...
 pause
 
-:: Debug where command
+:: Check for winget using PowerShell
 echo Checking for winget...
-where winget
-echo Winget check errorlevel: %errorlevel%
-pause
-
-:: Check for winget
-where winget >nul 2>&1
-if %errorlevel% neq 0 (
+powershell -Command "& { if (Get-Command winget -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+if %errorlevel% equ 0 (
+    echo Winget is already installed, continuing...
+    pause
+) else (
     echo Winget not found. Attempting to install...
 
     :: Create temp directory for winget installation
@@ -36,7 +34,7 @@ if %errorlevel% neq 0 (
     rd /s /q temp
 
     :: Verify installation
-    where winget >nul 2>&1
+    powershell -Command "& { if (Get-Command winget -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
     if %errorlevel% neq 0 (
         echo Error: Failed to install winget. Please install manually from the Microsoft Store.
         echo.
@@ -46,7 +44,12 @@ if %errorlevel% neq 0 (
         exit /b 1
     )
     echo Winget installed successfully!
+    pause
 )
+
+:: Add debug pause to see if we get past winget check
+echo Proceeding past winget check...
+pause
 
 :: Function to permanently add to PATH
 :AddToPath
