@@ -1,5 +1,3 @@
-import sys
-import ffmpeg
 import subprocess
 from constants import (
     FFMPEG_PRESET, FFMPEG_CRF, VIDEO_BITRATE, AUDIO_BITRATE,
@@ -8,7 +6,7 @@ from constants import (
 
 def create_ffmpeg_stream(orientation: str, url: str, key: str) -> subprocess.Popen | None:
     """
-    Create FFmpeg stream using ffmpeg-python library.
+    Create FFmpeg stream using direct subprocess command.
 
     Args:
         orientation: Stream orientation ('PORTRAIT' or 'LANDSCAPE')
@@ -24,42 +22,36 @@ def create_ffmpeg_stream(orientation: str, url: str, key: str) -> subprocess.Pop
         input_url = f"rtmp://localhost:{RTMP_LOCAL_PORT}/{orientation}"
         output_url = f"{url}{key}"
 
-        # Create stream with input options
-        stream = ffmpeg.input(
-            input_url,
-            f='flv'  # Input format
+        # Construct FFmpeg command
+        cmd = [
+            'ffmpeg',
+            '-f', 'flv',
+            '-i', input_url,
+            '-c:v', VIDEO_CODEC,
+            '-preset', FFMPEG_PRESET,
+            '-crf', str(FFMPEG_CRF),
+            '-b:v', VIDEO_BITRATE,
+            '-c:a', AUDIO_CODEC,
+            '-b:a', AUDIO_BITRATE,
+            '-f', 'flv',
+            '-tls_verify', '1',
+            output_url
+        ]
+
+        # Create and return process
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
         )
 
-        # Add output options
-        stream = ffmpeg.output(
-            stream,
-            output_url,
-            vcodec=VIDEO_CODEC,
-            acodec=AUDIO_CODEC,
-            preset=FFMPEG_PRESET,
-            crf=FFMPEG_CRF,
-            video_bitrate=VIDEO_BITRATE,
-            audio_bitrate=AUDIO_BITRATE,
-            format='flv',
-            tls_verify=1
-        )
-
-        # Run the stream (non-blocking)
-        process = ffmpeg.run_async(
-            stream,
-            quiet=True,
-            overwrite_output=True
-        )
-
-        # Keep the process reference
         return process
 
-    except ffmpeg.Error as e:
-        print(f"FFmpeg error occurred: {e.stderr.decode() if e.stderr else str(e)}")
-        sys.exit(1)
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        sys.exit(1)
+        return None
 
 def forward_stream(orientation=PORTRAIT, url="", key="") -> subprocess.Popen | None:
     """Forward stream using FFmpeg with specified parameters."""

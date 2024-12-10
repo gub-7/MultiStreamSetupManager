@@ -118,7 +118,7 @@ VIDEO_CODEC="libx264"
 VIDEO_PRESET="veryfast"
 VIDEO_CRF=23
 VIDEO_BITRATE="2M"
-AUDIO_CODEC="aac" 
+AUDIO_CODEC="aac"
 AUDIO_BITRATE="128k"
 OUTPUT_FORMAT="flv"
 
@@ -148,13 +148,8 @@ LANDSCAPE = "LANDSCAPE"
 RTMPS_PREFIX = 'rtmps://'
 APP_PATH = '/app/'
 STREAM_MODE = 'landscape'
-# Instagram related constants
-INSTAGRAM_LOGIN_URL = "https://www.instagram.com/accounts/login/"
 
 # User prompts
-LOGIN_PROMPT = (
-    "Log into Instagram and copy your RTMP stream URL and private key."
-)
 RTMP_URL_PROMPT = "Paste your RTMP stream URL here: "
 PRIVATE_KEY_PROMPT = "Paste your private key here: "
 
@@ -170,7 +165,6 @@ PLATFORM_YOUTUBE = "youtube"
 PLATFORM_TWITCH = "twitch"
 PLATFORM_KICK = "kick"
 PLATFORM_YOUTUBE_PORTRAIT = "youtubep"
-PLATFORM_INSTAGRAM = "instagram"
 
 # Platform mapping
 PLATFORM_MAP = {
@@ -178,7 +172,6 @@ PLATFORM_MAP = {
     2: PLATFORM_TWITCH,
     3: PLATFORM_KICK,
     4: PLATFORM_YOUTUBE_PORTRAIT,
-    5: PLATFORM_INSTAGRAM
 }
 
 # Default platform selection
@@ -188,11 +181,10 @@ DEFAULT_PLATFORM_SELECTION = "1, 2"
 PLATFORM_SELECTION_MENU = """
     Select streaming platforms.
     1. Youtube
-    2. Twitch 
+    2. Twitch
     3. Kick
     4. Youtube (portrait)
-    5. Instagram (portrait)
-    
+
     Ex: <1, 3, 4>(1, 3, and 4)
         <2-4>(2, 3, and 4)
         <1, 5>(1 and 5)
