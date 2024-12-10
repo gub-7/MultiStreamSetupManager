@@ -64,10 +64,14 @@ goto :eof
 :StartSetup
 
 :: Check/Install Python
-echo Checking for Python 3.11...
-powershell -Command "& { if (Get-Command python -ErrorAction SilentlyContinue) { $version = python -V 2>&1; if ($version -match '3\.11\.') { exit 0 } }; exit 1 }"
-if %errorlevel% neq 0 (
-    echo Python 3.11 not found. Installing Python...
+echo Checking for Python 3...
+python --version 2>nul | find "3." >nul
+if %errorlevel% equ 0 (
+    echo Python 3.11 is already installed.
+    goto PYTHON_INSTALLED
+)
+
+echo Python 3.11 not found. Installing Python...
     winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
     if %errorlevel% neq 0 (
         echo Failed to install Python via winget. Please install Python 3.11 manually.
@@ -83,14 +87,19 @@ if %errorlevel% neq 0 (
     call :RefreshPath
 
     :: Verify Python installation
-    powershell -Command "& { if (Get-Command python -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+    python --version 2>nul | find "3.11" >nul
     if %errorlevel% neq 0 (
-        echo Python installation failed or PATH not updated. Please restart your computer and run setup again.
+        echo Python installation completed but version check failed.
+        echo Please restart your computer and run setup again.
+        echo Current Python version:
+        python --version
         pause
         exit /b 1
     )
-    echo Python installed successfully!
+    echo Python 3.11 installed successfully!
 )
+
+:PYTHON_INSTALLED
 
 :: Check/Install Go
 echo Checking for Go...
