@@ -94,5 +94,3 @@ async def setup_kick_stream(creds, title, game=None):
     key = streamInfo.stream_key
     process = streamForward.forward_stream(STREAM_MODE, f"rtmps://{url}/app/", key)
     return client, process
-
->>>>>>> a9477f8dfa9edc9ca831f163f3f384a01d51bd3e

@@ -41,6 +41,13 @@ class ChatDisplay:
         self.input_thread = None
         self.stream1_process = stream1_process
         self.stream2_process = stream2_process
+        if stream1_process:
+            stream1_process.stdout = None  # Don't capture stdout
+            stream1_process.stderr = None  # Don't capture stderr
+        if stream2_process:
+            stream2_process.stdout = None  # Don't capture stdout
+            stream2_process.stderr = None  # Don't capture stderr
+        self.stream_threads = []
         self.messages_start_line = 9  # Reserve lines for header
         self.message_history = []
         self.max_messages = 100  # Maximum messages to keep in history
@@ -212,6 +219,12 @@ class ChatDisplay:
             self.display_header()
             time.sleep(1)  # Update every second
 
+    def _monitor_stream(self, process, stream_num):
+        """Monitor a stream process without interfering with its output."""
+        while self.running and process and process.poll() is None:
+            # Just check if process is alive
+            time.sleep(1)
+
     def start(self):
         """Start the chat display."""
         self.running = True
@@ -221,6 +234,25 @@ class ChatDisplay:
         print("\033[2J", end='')  # Clear entire screen
         print(Cursor.POS(0,0), end='')
         stdout.flush()
+
+        # Start stream monitoring threads
+        if self.stream1_process:
+            stream1_thread = threading.Thread(
+                target=self._monitor_stream,
+                args=(self.stream1_process, 1)
+            )
+            stream1_thread.daemon = True
+            stream1_thread.start()
+            self.stream_threads.append(stream1_thread)
+
+        if self.stream2_process:
+            stream2_thread = threading.Thread(
+                target=self._monitor_stream,
+                args=(self.stream2_process, 2)
+            )
+            stream2_thread.daemon = True
+            stream2_thread.start()
+            self.stream_threads.append(stream2_thread)
 
         # Update terminal size
         self.terminal_height = os.get_terminal_size().lines
@@ -297,12 +329,26 @@ class ChatDisplay:
     def stop(self):
         """Stop the chat display."""
         self.running = False
+
+        # Stop all threads
         if self.chat_thread:
             self.chat_thread.join()
         if self.header_thread:
             self.header_thread.join()
         if self.input_thread:
             self.input_thread.join()
+
+        # Stop stream monitoring threads
+        for thread in self.stream_threads:
+            thread.join(timeout=1)
+
+        # Terminate stream processes if they're still running
+        if self.stream1_process and self.stream1_process.poll() is None:
+            self.stream1_process.terminate()
+            self.stream1_process.wait(timeout=5)
+        if self.stream2_process and self.stream2_process.poll() is None:
+            self.stream2_process.terminate()
+            self.stream2_process.wait(timeout=5)
 
     def _refresh_messages(self):
         """Refresh all visible messages on the screen."""

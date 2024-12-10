@@ -113,6 +113,17 @@ class ChatManager:
             badges=user_data.get('badges', [])
         )
 
+    def _create_kick_message(self, item: Any) -> ChatMessage:
+        """Create ChatMessage from Kick chat data"""
+        return ChatMessage(
+            platform='kick',
+            username=item.author,
+            message=item.content,
+            timestamp=item.created_at,
+            message_id=item.id,
+            user_id=str(item.id),
+        )
+
     async def _process_kick_messages(
         self,
         messages: list,
