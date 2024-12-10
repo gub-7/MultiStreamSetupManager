@@ -144,9 +144,9 @@ if %errorlevel% equ 0 (
 )
 
 echo Python not found. Installing Python...
-winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
+winget install Python.Python --accept-source-agreements --accept-package-agreements --silent
 if %errorlevel% neq 0 (
-    echo Failed to install Python via winget. Please install Python 3.11 manually.
+    echo Failed to install Python via winget. Please install Python manually.
     echo Visit: https://www.python.org/downloads/
     pause
     exit /b 1
