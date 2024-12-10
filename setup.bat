@@ -129,41 +129,47 @@ goto :AddToPath_Return
 
 :: Check/Install Python
 echo Checking for Python 3...
-python --version 2>nul | find "3." >nul
+where python >nul 2>&1
 if %errorlevel% equ 0 (
-    echo Python 3.11 is already installed.
+    python --version
+    echo Python is already installed.
     goto PYTHON_INSTALLED
+) else (
+    where py >nul 2>&1
+    if %errorlevel% equ 0 (
+        py --version
+        echo Python is already installed via py launcher.
+        goto PYTHON_INSTALLED
+    )
 )
 
-echo Python 3.11 not found. Installing Python...
-    winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
-    if %errorlevel% neq 0 (
-        echo Failed to install Python via winget. Please install Python 3.11 manually.
-        echo Visit: https://www.python.org/downloads/
-        pause
-        exit /b 1
-    )
-
-    :: Wait for installation to complete and verify
-    timeout /t 5 /nobreak
-
-    :: Refresh PATH
-    set "RETURN_LABEL=After_Python_Path"
-    call :RefreshPath
-    :After_Python_Path
-
-    :: Verify Python installation
-    python --version 2>nul | find "3.11" >nul
-    if %errorlevel% neq 0 (
-        echo Python installation completed but version check failed.
-        echo Please restart your computer and run setup again.
-        echo Current Python version:
-        python --version
-        pause
-        exit /b 1
-    )
-    echo Python 3.11 installed successfully!
+echo Python not found. Installing Python...
+winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
+if %errorlevel% neq 0 (
+    echo Failed to install Python via winget. Please install Python 3.11 manually.
+    echo Visit: https://www.python.org/downloads/
+    pause
+    exit /b 1
 )
+
+:: Wait for installation to complete
+timeout /t 5 /nobreak
+
+:: Refresh PATH
+for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
+for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "PATH=!PATH!;%%b"
+
+:: Verify Python installation
+where python >nul 2>&1 || where py >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Python installation completed but PATH not updated.
+    echo Please restart your computer and run setup again.
+    pause
+    exit /b 1
+)
+echo Python installed successfully!
+
+:PYTHON_INSTALLED
 
 :PYTHON_INSTALLED
 
