@@ -72,6 +72,47 @@ if not defined CURL_PATH (
     for /f "delims=" %%i in ('where curl') do set "CURL_PATH=%%i"
 )
 
+:: Check for tar
+echo Checking for tar...
+tar --version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Tar is already installed:
+    tar --version
+    echo.
+    echo Continuing with setup...
+) else (
+    echo Tar not found. Installing tar...
+    winget install GnuWin32.Tar --accept-source-agreements --accept-package-agreements --silent
+    if %errorlevel% neq 0 (
+        echo Failed to install tar via winget.
+        echo Attempting alternative installation...
+        :: Try alternative package
+        winget install Microsoft.WindowsSDK --accept-source-agreements --accept-package-agreements --silent
+        if %errorlevel% neq 0 (
+            echo Failed to install tar. Please install Windows SDK manually.
+            echo Visit: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
+            pause
+            exit /b 1
+        )
+    )
+
+    :: Wait for installation to complete
+    timeout /t 5 /nobreak
+
+    :: Refresh PATH
+    for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
+
+    :: Verify tar installation
+    tar --version >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo Tar installation failed or PATH not updated.
+        echo Please restart your computer and run setup again.
+        pause
+        exit /b 1
+    )
+    echo Tar installed successfully!
+)
+
 goto :StartSetup
 
 :AddToPath
@@ -226,13 +267,17 @@ if not exist "temp\nginx-rtmp.zip" (
 )
 echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
 
-:: Extract NGINX-RTMP using tar (built into Windows 10+)
+:: Try to extract NGINX-RTMP using tar
 echo Extracting NGINX-RTMP...
 tar -xf temp\nginx-rtmp.zip -C temp
 if not exist "temp\nginx-rtmp-win32-1.2.1" (
-    echo Failed to extract NGINX-RTMP
-    pause
-    exit /b 1
+    echo Tar extraction failed, attempting PowerShell fallback...
+    powershell -Command "& {Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('temp\nginx-rtmp.zip', 'temp')}"
+    if not exist "temp\nginx-rtmp-win32-1.2.1" (
+        echo Failed to extract NGINX-RTMP using both tar and PowerShell
+        pause
+        exit /b 1
+    )
 )
 echo Successfully extracted NGINX-RTMP to: %CD%\temp\nginx-rtmp-win32-1.2.1
 
