@@ -8,43 +8,20 @@ echo.
 echo Checking and installing prerequisites...
 pause
 
-:: Check for winget using PowerShell
+:: Check for winget by running version command
 echo Checking for winget...
-powershell -Command "& { if (Get-Command winget -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
+winget --version >nul 2>&1
 if %errorlevel% equ 0 (
-    echo Winget is already installed, continuing...
-    pause
+    echo Winget is already installed:
+    winget --version
+    echo.
+    echo Continuing with setup...
 ) else (
-    echo Winget not found. Attempting to install...
-
-    :: Create temp directory for winget installation
-    if not exist "temp" mkdir temp
-    cd temp
-
-    :: Download latest Microsoft.DesktopAppInstaller from GitHub
-    echo Downloading App Installer...
-    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile 'Microsoft.DesktopAppInstaller.msixbundle'}"
-
-    :: Install using PowerShell Add-AppxPackage
-    echo Installing App Installer...
-    powershell -Command "& {Add-AppxPackage -Path '.\Microsoft.DesktopAppInstaller.msixbundle'}"
-
-    :: Clean up
-    cd ..
-    rd /s /q temp
-
-    :: Verify installation
-    powershell -Command "& { if (Get-Command winget -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 } }"
-    if %errorlevel% neq 0 (
-        echo Error: Failed to install winget. Please install manually from the Microsoft Store.
-        echo.
-        echo Script completed with errorlevel: %errorlevel%
-        echo Press any key to exit...
-        pause >nul
-        exit /b 1
-    )
-    echo Winget installed successfully!
+    echo Winget not found. Please install App Installer from the Microsoft Store
+    echo Visit: https://www.microsoft.com/store/productId/9NBLGGH4NNS1
+    echo After installation, please restart this script
     pause
+    exit /b 1
 )
 
 :: Add debug pause to see if we get past winget check
@@ -56,8 +33,8 @@ goto :StartSetup
 :AddToPath
 setlocal EnableDelayedExpansion
 set "PathToAdd=%~1"
-:: Check if path already exists in system PATH
-powershell -Command "& {$newPath='%PathToAdd%'; $currentPath=[Environment]::GetEnvironmentVariable('PATH', 'Machine'); if ($currentPath -notlike '*' + $newPath + '*') {[Environment]::SetEnvironmentVariable('PATH', $currentPath + ';' + $newPath, 'Machine')}}"
+:: Add to PATH if not already present
+echo %PATH% | find /i "%PathToAdd%" >nul || setx /M PATH "%PATH%;%PathToAdd%"
 endlocal
 goto :AddToPath_Return
 
@@ -177,9 +154,8 @@ if %errorlevel% equ 0 (
 
 :: Function to refresh PATH environment
 :RefreshPath
-for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "system_path=%%b"
-for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path') do set "user_path=%%b"
-set "PATH=%system_path%;%user_path%"
+:: Refresh PATH from registry
+for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
 
 :: Ask about existing NGINX installation
 set /p CUSTOM_NGINX="Do you have an existing NGINX installation that you want to manage yourself? (y/n): "
@@ -196,9 +172,9 @@ echo Current directory: %CD%
 if not exist "temp" mkdir temp
 echo Created temp directory at: %CD%\temp
 
-:: Download NGINX-RTMP
+:: Download NGINX-RTMP using curl (built into Windows 10+)
 echo Downloading NGINX-RTMP...
-powershell -Command "& {Invoke-WebRequest -Uri 'https://github.com/illuspas/nginx-rtmp-win32/archive/refs/tags/v1.2.1.zip' -OutFile 'temp\nginx-rtmp.zip'}"
+curl -L -o temp\nginx-rtmp.zip https://github.com/illuspas/nginx-rtmp-win32/archive/refs/tags/v1.2.1.zip
 if not exist "temp\nginx-rtmp.zip" (
     echo Failed to download NGINX-RTMP
     pause
@@ -206,9 +182,9 @@ if not exist "temp\nginx-rtmp.zip" (
 )
 echo Successfully downloaded NGINX-RTMP to: %CD%\temp\nginx-rtmp.zip
 
-:: Extract NGINX-RTMP
+:: Extract NGINX-RTMP using tar (built into Windows 10+)
 echo Extracting NGINX-RTMP...
-powershell -Command "& {Expand-Archive -Path 'temp\nginx-rtmp.zip' -DestinationPath 'temp' -Force}"
+tar -xf temp\nginx-rtmp.zip -C temp
 if not exist "temp\nginx-rtmp-win32-1.2.1" (
     echo Failed to extract NGINX-RTMP
     pause
