@@ -30,10 +30,6 @@ PLATFORM_FORMATS = {
         'color': Fore.GREEN,
         'prefix': '[KICK]'
     },
-    'instagram': {
-        'color': Fore.YELLOW,
-        'prefix': '[IG]'
-    }
 }
 
 class ChatDisplay:

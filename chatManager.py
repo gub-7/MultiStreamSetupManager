@@ -55,7 +55,6 @@ class ChatManager:
             'youtube.com': self._handle_youtube_connection,
             'twitch.tv': self._handle_twitch_connection,
             'kick.com': self._handle_kick_connection,
-            'instagram.com': self._handle_instagram_connection,
         }
 
         # Platform-specific WebSocket URLs
@@ -112,90 +111,6 @@ class ChatManager:
             is_moderator=user_data.get('is_moderator', False),
             is_subscriber=user_data.get('is_subscriber', False),
             badges=user_data.get('badges', [])
-        )
-
-    def _create_instagram_message(self, item: dict) -> ChatMessage:
-        """Create ChatMessage from Instagram comment data"""
-        return ChatMessage(
-            platform='instagram',
-            username=item.get('user', {}).get('username', 'Unknown'),
-            message=item.get('text', ''),
-            timestamp=datetime.fromtimestamp(item['created_at']),
-            message_id=str(item['pk']),
-            user_id=str(item.get('user', {}).get('pk', '')),
-            is_moderator=False,
-            is_subscriber=False,
-            badges=[]
-        )
-
-    async def _process_instagram_messages(
-        self,
-        messages: dict,
-        seen_ids: set,
-        last_ts: int
-    ) -> int:
-        """Process Instagram messages and return updated timestamp"""
-        if not messages or 'comments' not in messages:
-            return last_ts
-
-        for item in messages['comments']:
-            if item['pk'] in seen_ids:
-                continue
-
-            seen_ids.add(item['pk'])
-            last_ts = max(last_ts, item['created_at'])
-
-            msg = self._create_instagram_message(item)
-            await self._broadcast_message(msg)
-
-        return last_ts
-
-    async def _handle_instagram_connection(self, client) -> None:
-        """Handle Instagram live chat using authenticated client"""
-        last_ts = 0
-        poll_interval = 15  # Standardized polling interval
-        seen_message_ids = set()
-
-        try:
-            broadcast_id = client.username
-            if not broadcast_id:
-                return
-
-            while self.running:
-                try:
-                    messages = await asyncio.to_thread(
-                        client.media_fetch_live_chat,
-                        broadcast_id,
-                        last_comment_ts=last_ts
-                    )
-
-                    last_ts = await self._process_instagram_messages(
-                        messages,
-                        seen_message_ids,
-                        last_ts
-                    )
-
-                    if len(seen_message_ids) > 1000:
-                        seen_message_ids.clear()
-
-                except Exception as e:
-                    logger.error(f"Error polling Instagram chat: {str(e)}")
-
-                await asyncio.sleep(poll_interval)
-
-        except Exception as e:
-            logger.error(f"Error in Instagram chat connection: {str(e)}")
-
-    def _create_kick_message(self, item) -> ChatMessage:
-        """Create a ChatMessage from a Kick message item"""
-        return ChatMessage(
-            platform='kick',
-            username=item.author,
-            message=item.content,
-            timestamp=item.created_at,
-            message_id=str(item.id),
-            user_id=str(item.author),
-            badges=[]
         )
 
     async def _process_kick_messages(
@@ -408,17 +323,6 @@ class ChatManager:
             logger.info("Starting Kick chat connection")
             self.active_tasks['kick_client'] = asyncio.create_task(
                 self._handle_kick_connection(source))
-            return
-
-        elif hasattr(source, 'media_fetch_live_chat'):  # Instagram client
-            if 'instagram_client' in self.active_tasks:
-                logger.warning("Instagram chat connection already active")
-                return
-
-            self.running = True
-            logger.info("Starting Instagram chat connection")
-            self.active_tasks['instagram_client'] = asyncio.create_task(
-                self._handle_instagram_connection(source))
             return
 
         # Handle URL-based platforms

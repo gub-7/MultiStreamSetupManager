@@ -11,7 +11,6 @@ import youtubeAuth
 import kickSetup
 import twitchSetup
 import youtubeSetup
-import instaSetup
 from chatManager import ChatManager, ChatMessage
 from chatDisplay import ChatDisplay, create_chat_display
 from constants import *
@@ -23,7 +22,6 @@ logging.getLogger('urllib3').setLevel(logging.ERROR)
 # Silence asyncio logging
 logging.getLogger('asyncio').setLevel(logging.ERROR)
 logging.getLogger('websockets').setLevel(logging.ERROR)
-logging.getLogger('instagrapi').setLevel(logging.ERROR)
 logging.getLogger('youtube').setLevel(logging.ERROR)
 
 def print_platform_selection_menu():
@@ -166,10 +164,6 @@ async def setup_kick(creds, title, game=None):
     save_creds(creds, "kick")
     return await kickSetup.setup_kick_stream(creds["kick"], title, game)
 
-def setup_instagram(creds, title):
-    save_creds(creds, "instagram")
-    return instaSetup.setup_instagram_stream(creds["instagram"], title)
-
 async def setup_platform_streams(creds):
     chat_urls = []
     forward_processes = []
@@ -191,13 +185,6 @@ async def setup_platform_streams(creds):
         kick_url, forward_process = await setup_kick(creds, title, game if game != "" else None)
         if kick_url:
             chat_urls.append(kick_url)
-        if forward_process:
-            forward_processes.append(forward_process)
-
-    if "instagram" in creds:
-        insta_url, forward_process = setup_instagram(creds, title)
-        if insta_url:
-            chat_urls.append(insta_url)
         if forward_process:
             forward_processes.append(forward_process)
 
