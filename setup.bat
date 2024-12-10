@@ -24,9 +24,9 @@ if %errorlevel% equ 0 (
     exit /b 1
 )
 
-:: Check for curl
+:: Check for curl by looking in common locations
 echo Checking for curl...
-curl --version >nul 2>&1
+where curl >nul 2>&1
 if %errorlevel% equ 0 (
     echo Curl is already installed:
     curl --version
@@ -45,18 +45,38 @@ if %errorlevel% equ 0 (
     :: Wait for installation to complete
     timeout /t 5 /nobreak
 
-    :: Refresh PATH
-    call :RefreshPath
+    :: Get the new PATH from the registry and set it for current session
+    for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
+    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2>nul') do set "PATH=!PATH!;%%b"
 
-    :: Verify curl installation
-    curl --version >nul 2>&1
+    :: Verify curl installation using full path if needed
+    where curl >nul 2>&1
     if %errorlevel% neq 0 (
-        echo Curl installation failed or PATH not updated.
-        echo Please restart your computer and run setup again.
-        pause
-        exit /b 1
+        echo Curl installation completed but PATH not updated.
+        echo Attempting to find curl in common locations...
+
+        if exist "C:\Windows\System32\curl.exe" (
+            set "CURL_PATH=C:\Windows\System32\curl.exe"
+        ) else if exist "C:\Program Files\curl\bin\curl.exe" (
+            set "CURL_PATH=C:\Program Files\curl\bin\curl.exe"
+        ) else if exist "C:\Program Files (x86)\curl\bin\curl.exe" (
+            set "CURL_PATH=C:\Program Files (x86)\curl\bin\curl.exe"
+        ) else (
+            echo Could not find curl.exe in common locations.
+            echo Please restart your computer and run setup again.
+            pause
+            exit /b 1
+        )
+        echo Found curl at: !CURL_PATH!
+    ) else (
+        for /f "delims=" %%i in ('where curl') do set "CURL_PATH=%%i"
     )
     echo Curl installed successfully!
+)
+
+:: Set CURL_PATH if not already set
+if not defined CURL_PATH (
+    for /f "delims=" %%i in ('where curl') do set "CURL_PATH=%%i"
 )
 
 goto :StartSetup
@@ -203,9 +223,9 @@ echo Current directory: %CD%
 if not exist "temp" mkdir temp
 echo Created temp directory at: %CD%\temp
 
-:: Download NGINX-RTMP using curl (built into Windows 10+)
+:: Download NGINX-RTMP using curl
 echo Downloading NGINX-RTMP...
-curl -L -o temp\nginx-rtmp.zip https://github.com/illuspas/nginx-rtmp-win32/archive/refs/tags/v1.2.1.zip
+"%CURL_PATH%" -L -o temp\nginx-rtmp.zip https://github.com/illuspas/nginx-rtmp-win32/archive/refs/tags/v1.2.1.zip
 if not exist "temp\nginx-rtmp.zip" (
     echo Failed to download NGINX-RTMP
     pause
