@@ -1,7 +1,18 @@
-@echo off
+@echo on
 setlocal EnableDelayedExpansion
 
+echo Starting setup script...
+echo Current directory: %CD%
+echo.
+
 echo Checking and installing prerequisites...
+pause
+
+:: Debug where command
+echo Checking for winget...
+where winget
+echo Winget check errorlevel: %errorlevel%
+pause
 
 :: Check for winget
 where winget >nul 2>&1
@@ -28,7 +39,10 @@ if %errorlevel% neq 0 (
     where winget >nul 2>&1
     if %errorlevel% neq 0 (
         echo Error: Failed to install winget. Please install manually from the Microsoft Store.
-        pause
+        echo.
+        echo Script completed with errorlevel: %errorlevel%
+        echo Press any key to exit...
+        pause >nul
         exit /b 1
     )
     echo Winget installed successfully!
