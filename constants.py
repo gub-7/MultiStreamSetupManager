@@ -192,4 +192,3 @@ PLATFORM_SELECTION_MENU = """
 
 # File name templates
 CREDS_FILE_TEMPLATE = "{}Creds.json"
-
