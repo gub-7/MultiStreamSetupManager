@@ -26,12 +26,13 @@ if %errorlevel% equ 0 (
 
 :: Check for curl by looking in common locations
 echo Checking for curl...
-where curl >nul 2>&1
+where curl >nul 2>nul
 if %errorlevel% equ 0 (
     echo Curl is already installed:
     curl --version
     echo.
     echo Continuing with setup...
+    for /f "delims=" %%i in ('where curl') do set "CURL_PATH=%%i"
 ) else (
     echo Curl not found. Installing curl...
     winget install cURL.cURL --accept-source-agreements --accept-package-agreements --silent
@@ -47,30 +48,22 @@ if %errorlevel% equ 0 (
 
     :: Get the new PATH from the registry and set it for current session
     for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "PATH=%%b"
-    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2>nul') do set "PATH=!PATH!;%%b"
+    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "PATH=!PATH!;%%b"
 
-    :: Verify curl installation using full path if needed
-    where curl >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo Curl installation completed but PATH not updated.
-        echo Attempting to find curl in common locations...
-
-        if exist "C:\Windows\System32\curl.exe" (
-            set "CURL_PATH=C:\Windows\System32\curl.exe"
-        ) else if exist "C:\Program Files\curl\bin\curl.exe" (
-            set "CURL_PATH=C:\Program Files\curl\bin\curl.exe"
-        ) else if exist "C:\Program Files (x86)\curl\bin\curl.exe" (
-            set "CURL_PATH=C:\Program Files (x86)\curl\bin\curl.exe"
-        ) else (
-            echo Could not find curl.exe in common locations.
-            echo Please restart your computer and run setup again.
-            pause
-            exit /b 1
-        )
-        echo Found curl at: !CURL_PATH!
+    :: Check common locations for curl
+    if exist "C:\Windows\System32\curl.exe" (
+        set "CURL_PATH=C:\Windows\System32\curl.exe"
+    ) else if exist "C:\Program Files\curl\bin\curl.exe" (
+        set "CURL_PATH=C:\Program Files\curl\bin\curl.exe"
+    ) else if exist "C:\Program Files (x86)\curl\bin\curl.exe" (
+        set "CURL_PATH=C:\Program Files (x86)\curl\bin\curl.exe"
     ) else (
-        for /f "delims=" %%i in ('where curl') do set "CURL_PATH=%%i"
+        echo Could not find curl.exe in common locations.
+        echo Please restart your computer and run setup again.
+        pause
+        exit /b 1
     )
+    echo Found curl at: !CURL_PATH!
     echo Curl installed successfully!
 )
 
